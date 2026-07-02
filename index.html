@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#14171c">
+<title>字根單字通勤機</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- HOME -->
+  <section id="view-home" class="view active">
+    <header class="topbar">
+      <div class="brand">🌱 字根單字通勤機</div>
+      <button id="btn-stats" class="icon-btn" title="統計">📊</button>
+    </header>
+
+    <div class="home-hero">
+      <div class="hero-day">Day <span id="home-day-num">1</span> / 7</div>
+      <div class="hero-sub" id="home-day-range">—</div>
+      <div class="progress-ring-wrap">
+        <svg viewBox="0 0 120 120" class="progress-ring">
+          <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
+        </svg>
+        <div class="ring-label">
+          <div id="ring-pct">0%</div>
+          <div class="ring-small">本週進度</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="stat-row">
+      <div class="stat-chip"><span id="stat-due">0</span><label>本日已學</label></div>
+      <div class="stat-chip"><span id="stat-new">0</span><label>本日剩餘</label></div>
+      <div class="stat-chip"><span id="stat-streak">0</span><label>🔥 連續天數</label></div>
+    </div>
+
+    <button id="btn-start-session" class="cta-btn">開始通勤學習</button>
+
+    <div class="mode-row">
+      <button id="btn-quiz-mode" class="secondary-btn">✏️ 選擇題測驗</button>
+      <button id="btn-listen-mode" class="secondary-btn">🎧 聽力模式（免看）</button>
+    </div>
+
+    <div class="day-picker">
+      <div class="day-picker-label">跳到指定天數</div>
+      <div class="day-dots" id="day-dots"></div>
+    </div>
+  </section>
+
+  <!-- FLASHCARD SESSION -->
+  <section id="view-session" class="view">
+    <header class="topbar">
+      <button id="btn-exit-session" class="icon-btn">✕</button>
+      <div class="session-progress-mid">
+        <div class="session-progress-bar"><div id="session-progress-fill"></div></div>
+        <div class="session-progress-label">
+          <span id="session-progress-count">0 / 0</span>
+          <span id="session-progress-pct">0%</span>
+        </div>
+      </div>
+      <button id="btn-speak" class="icon-btn" title="發音">🔊</button>
+    </header>
+
+    <div class="card-stage">
+      <div id="flashcard" class="flashcard">
+        <div class="card-face card-front">
+          <div class="card-root" id="card-root"></div>
+          <div class="card-word" id="card-word"></div>
+          <div class="card-hint">點卡片看解答 · 向左/右滑看下一個</div>
+        </div>
+        <div class="card-face card-back">
+          <div class="card-word-small" id="card-word-back"></div>
+          <div class="card-root-back" id="card-root-back"></div>
+          <div class="card-hook" id="card-mnemonic"></div>
+          <div class="card-zh" id="card-zh"></div>
+          <div class="card-section" id="card-example-wrap">
+            <div class="card-label">例句</div>
+            <div id="card-example" class="card-example"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="nav-row">
+      <button id="btn-prev" class="nav-btn">‹ 上一個</button>
+      <button id="btn-next" class="nav-btn">下一個 ›</button>
+    </div>
+  </section>
+
+  <!-- QUIZ MODE -->
+  <section id="view-quiz" class="view">
+    <header class="topbar">
+      <button id="btn-exit-quiz" class="icon-btn">✕</button>
+      <div class="session-progress-bar"><div id="quiz-progress-fill"></div></div>
+      <div class="quiz-score">✅ <span id="quiz-score">0</span></div>
+    </header>
+    <div class="quiz-stage">
+      <div class="quiz-word" id="quiz-word"></div>
+      <div class="quiz-root" id="quiz-root"></div>
+      <div class="quiz-options" id="quiz-options"></div>
+    </div>
+  </section>
+
+  <!-- LISTEN MODE -->
+  <section id="view-listen" class="view">
+    <header class="topbar">
+      <button id="btn-exit-listen" class="icon-btn">✕</button>
+      <div class="listen-title">聽力模式</div>
+      <button id="btn-listen-toggle" class="icon-btn">⏸</button>
+    </header>
+    <div class="listen-stage">
+      <div class="listen-word" id="listen-word"></div>
+      <div class="listen-zh" id="listen-zh"></div>
+      <div class="listen-mnemonic" id="listen-mnemonic"></div>
+      <div class="listen-progress" id="listen-progress"></div>
+    </div>
+  </section>
+
+  <!-- SESSION COMPLETE -->
+  <section id="view-done" class="view">
+    <div class="done-stage">
+      <div class="done-emoji">🎉</div>
+      <div class="done-title">這回合完成！</div>
+      <div class="done-stats" id="done-stats"></div>
+      <button id="btn-done-next" class="cta-btn" style="display:none">繼續下一批</button>
+      <button id="btn-done-home" class="secondary-btn" style="max-width:200px">回首頁</button>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section id="view-stats" class="view">
+    <header class="topbar">
+      <button id="btn-exit-stats" class="icon-btn">✕</button>
+      <div class="brand">統計</div>
+      <div style="width:32px"></div>
+    </header>
+    <div class="stats-body">
+      <div class="stats-grid" id="stats-grid"></div>
+      <h3>各天進度</h3>
+      <div id="stats-days"></div>
+      <h3>資料備份</h3>
+      <p class="stats-note">學習進度只存在這個瀏覽器裡。換裝置前記得匯出備份。</p>
+      <div class="backup-row">
+        <button id="btn-export" class="secondary-btn">⬇️ 匯出進度</button>
+        <button id="btn-import" class="secondary-btn">⬆️ 匯入進度</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+      <button id="btn-reset" class="danger-btn">重置全部進度</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
