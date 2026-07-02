@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lgv-cache-v2';
+const CACHE_NAME = 'lgv-cache-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -26,6 +26,9 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
+  // Only cache same-origin static assets. Cross-origin calls (e.g. the GitHub
+  // Gist sync API) must always hit the network fresh — never cache those.
+  if (new URL(event.request.url).origin !== self.location.origin) return;
   event.respondWith(
     caches.match(event.request).then((cached) => {
       const fetchPromise = fetch(event.request).then((networkResp) => {

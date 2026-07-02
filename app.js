@@ -80,14 +80,18 @@ function setSyncConfig(cfg) {
 function ghHeaders(token) {
   return { Authorization: 'token ' + token, Accept: 'application/vnd.github+json' };
 }
+// Sync data must always be fresh — never let the browser's HTTP cache serve a stale pull.
+function ghFetch(url, opts) {
+  return fetch(url, Object.assign({ cache: 'no-store' }, opts));
+}
 
 async function findOrCreateGist(token) {
-  const listResp = await fetch('https://api.github.com/gists?per_page=100', { headers: ghHeaders(token) });
+  const listResp = await ghFetch('https://api.github.com/gists?per_page=100', { headers: ghHeaders(token) });
   if (!listResp.ok) throw new Error('無法讀取 Gist 列表 (' + listResp.status + ')');
   const gists = await listResp.json();
   const found = gists.find(g => g.description === GIST_DESC && g.files && g.files[GIST_FILENAME]);
   if (found) return found.id;
-  const createResp = await fetch('https://api.github.com/gists', {
+  const createResp = await ghFetch('https://api.github.com/gists', {
     method: 'POST',
     headers: ghHeaders(token),
     body: JSON.stringify({
@@ -102,7 +106,7 @@ async function findOrCreateGist(token) {
 }
 
 async function pullFromGist(token, gistId) {
-  const resp = await fetch('https://api.github.com/gists/' + gistId, { headers: ghHeaders(token) });
+  const resp = await ghFetch('https://api.github.com/gists/' + gistId, { headers: ghHeaders(token) });
   if (!resp.ok) throw new Error('無法讀取進度 (' + resp.status + ')');
   const gist = await resp.json();
   const file = gist.files[GIST_FILENAME];
@@ -111,7 +115,7 @@ async function pullFromGist(token, gistId) {
 }
 
 async function pushToGist(token, gistId, data) {
-  const resp = await fetch('https://api.github.com/gists/' + gistId, {
+  const resp = await ghFetch('https://api.github.com/gists/' + gistId, {
     method: 'PATCH',
     headers: ghHeaders(token),
     body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(data) } } }),
@@ -126,7 +130,7 @@ function mergeProgress(local, remote) {
 }
 
 async function connectSync(token) {
-  const userResp = await fetch('https://api.github.com/user', { headers: ghHeaders(token) });
+  const userResp = await ghFetch('https://api.github.com/user', { headers: ghHeaders(token) });
   if (!userResp.ok) throw new Error('Token 無效或權限不足');
   const user = await userResp.json();
   const gistId = await findOrCreateGist(token);
