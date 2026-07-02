@@ -33,6 +33,8 @@ function defaultProgress() {
     lastAdvanceDate: null,
     streak: 0,
     lastStudyDate: null,
+    settings: { defaultFlipped: false },
+    updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
 
@@ -43,13 +45,17 @@ function loadProgress() {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return defaultProgress();
     const p = JSON.parse(raw);
-    return Object.assign(defaultProgress(), p);
+    const merged = Object.assign(defaultProgress(), p);
+    merged.settings = Object.assign(defaultProgress().settings, p.settings || {});
+    return merged;
   } catch (e) {
     return defaultProgress();
   }
 }
-function saveProgress() {
+function saveProgress(skipSync) {
+  PROGRESS.updatedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(PROGRESS));
+  if (!skipSync) scheduleSyncPush();
 }
 
 function getState(num) {
@@ -57,6 +63,103 @@ function getState(num) {
 }
 function setState(num, st) {
   PROGRESS.words[num] = st;
+}
+
+/* ---------- cross-device sync (GitHub Gist as backend) ---------- */
+const SYNC_KEY = 'lgv_sync_v1';
+const GIST_FILENAME = 'lgv-progress.json';
+const GIST_DESC = 'LilyGRE Vocab Sync — do not delete';
+
+function getSyncConfig() {
+  try { return JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); } catch (e) { return null; }
+}
+function setSyncConfig(cfg) {
+  if (cfg) localStorage.setItem(SYNC_KEY, JSON.stringify(cfg));
+  else localStorage.removeItem(SYNC_KEY);
+}
+function ghHeaders(token) {
+  return { Authorization: 'token ' + token, Accept: 'application/vnd.github+json' };
+}
+
+async function findOrCreateGist(token) {
+  const listResp = await fetch('https://api.github.com/gists?per_page=100', { headers: ghHeaders(token) });
+  if (!listResp.ok) throw new Error('無法讀取 Gist 列表 (' + listResp.status + ')');
+  const gists = await listResp.json();
+  const found = gists.find(g => g.description === GIST_DESC && g.files && g.files[GIST_FILENAME]);
+  if (found) return found.id;
+  const createResp = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: ghHeaders(token),
+    body: JSON.stringify({
+      description: GIST_DESC,
+      public: false,
+      files: { [GIST_FILENAME]: { content: JSON.stringify(PROGRESS) } },
+    }),
+  });
+  if (!createResp.ok) throw new Error('無法建立 Gist (' + createResp.status + ')');
+  const created = await createResp.json();
+  return created.id;
+}
+
+async function pullFromGist(token, gistId) {
+  const resp = await fetch('https://api.github.com/gists/' + gistId, { headers: ghHeaders(token) });
+  if (!resp.ok) throw new Error('無法讀取進度 (' + resp.status + ')');
+  const gist = await resp.json();
+  const file = gist.files[GIST_FILENAME];
+  if (!file || !file.content) return null;
+  return JSON.parse(file.content);
+}
+
+async function pushToGist(token, gistId, data) {
+  const resp = await fetch('https://api.github.com/gists/' + gistId, {
+    method: 'PATCH',
+    headers: ghHeaders(token),
+    body: JSON.stringify({ files: { [GIST_FILENAME]: { content: JSON.stringify(data) } } }),
+  });
+  if (!resp.ok) throw new Error('同步失敗 (' + resp.status + ')');
+}
+
+function mergeProgress(local, remote) {
+  if (!remote) return local;
+  if (!local.updatedAt || remote.updatedAt > local.updatedAt) return Object.assign(defaultProgress(), remote);
+  return local;
+}
+
+async function connectSync(token) {
+  const userResp = await fetch('https://api.github.com/user', { headers: ghHeaders(token) });
+  if (!userResp.ok) throw new Error('Token 無效或權限不足');
+  const user = await userResp.json();
+  const gistId = await findOrCreateGist(token);
+  const remote = await pullFromGist(token, gistId);
+  PROGRESS = mergeProgress(PROGRESS, remote);
+  saveProgress(true);
+  setSyncConfig({ token, gistId, username: user.login });
+  await pushToGist(token, gistId, PROGRESS);
+  return user.login;
+}
+
+function disconnectSync() {
+  setSyncConfig(null);
+}
+
+let syncPushTimer = null;
+function scheduleSyncPush() {
+  const cfg = getSyncConfig();
+  if (!cfg) return;
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => {
+    pushToGist(cfg.token, cfg.gistId, PROGRESS).catch(() => {});
+  }, 1500);
+}
+
+async function pullSyncOnLoad() {
+  const cfg = getSyncConfig();
+  if (!cfg) return;
+  try {
+    const remote = await pullFromGist(cfg.token, cfg.gistId);
+    PROGRESS = mergeProgress(PROGRESS, remote);
+    saveProgress(true);
+  } catch (e) { /* offline or token revoked — keep working locally */ }
 }
 
 function ensureDayAdvance() {
@@ -214,8 +317,8 @@ function renderCard() {
   const e = currentEntry();
   if (!e) { finishSession(); return; }
   const card = document.getElementById('flashcard');
-  card.classList.remove('flipped');
-  session.flipped = false;
+  session.flipped = !!PROGRESS.settings.defaultFlipped;
+  card.classList.toggle('flipped', session.flipped);
 
   document.getElementById('card-root').textContent = e.root ? '🌱 ' + e.root : '';
   document.getElementById('card-word').textContent = e.word;
@@ -417,6 +520,25 @@ function renderStats() {
     row.innerHTML = `<div class="dlabel">Day ${d}</div><div class="dbar"><div class="dbar-fill" style="width:${s.pct}%"></div></div><div class="dnum">${s.seen}/${s.total}</div>`;
     daysEl.appendChild(row);
   }
+
+  document.getElementById('toggle-default-flip').setAttribute('aria-checked', String(!!PROGRESS.settings.defaultFlipped));
+  renderSyncUI();
+}
+
+function renderSyncUI() {
+  const cfg = getSyncConfig();
+  const statusEl = document.getElementById('sync-status');
+  statusEl.classList.remove('ok', 'err');
+  if (cfg) {
+    statusEl.textContent = `已連接 GitHub 帳號「${cfg.username}」，會自動同步進度。`;
+    statusEl.classList.add('ok');
+    document.getElementById('sync-connect-box').style.display = 'none';
+    document.getElementById('sync-connected-box').style.display = '';
+  } else {
+    statusEl.textContent = '尚未連接。連接後手機和電腦會自動同步同一份進度。';
+    document.getElementById('sync-connect-box').style.display = '';
+    document.getElementById('sync-connected-box').style.display = 'none';
+  }
 }
 
 /* ---------- import / export / reset ---------- */
@@ -493,6 +615,69 @@ document.getElementById('btn-reset').onclick = () => {
   }
 };
 
+document.getElementById('toggle-default-flip').onclick = (ev) => {
+  PROGRESS.settings.defaultFlipped = !PROGRESS.settings.defaultFlipped;
+  ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.defaultFlipped));
+  saveProgress();
+};
+
+document.getElementById('btn-sync-connect').onclick = async () => {
+  const btn = document.getElementById('btn-sync-connect');
+  const input = document.getElementById('sync-token-input');
+  const token = input.value.trim();
+  if (!token) { alert('請先貼上 Token。'); return; }
+  btn.disabled = true;
+  btn.textContent = '連接中…';
+  const statusEl = document.getElementById('sync-status');
+  try {
+    const username = await connectSync(token);
+    input.value = '';
+    renderSyncUI();
+    renderStats();
+    renderHome();
+    statusEl.textContent = `已連接 GitHub 帳號「${username}」，進度已同步。`;
+    statusEl.classList.remove('err'); statusEl.classList.add('ok');
+  } catch (e) {
+    statusEl.textContent = '連接失敗：' + e.message;
+    statusEl.classList.remove('ok'); statusEl.classList.add('err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '連接';
+  }
+};
+
+document.getElementById('btn-sync-now').onclick = async () => {
+  const btn = document.getElementById('btn-sync-now');
+  const cfg = getSyncConfig();
+  if (!cfg) return;
+  btn.disabled = true;
+  btn.textContent = '同步中…';
+  const statusEl = document.getElementById('sync-status');
+  try {
+    const remote = await pullFromGist(cfg.token, cfg.gistId);
+    PROGRESS = mergeProgress(PROGRESS, remote);
+    saveProgress(true);
+    await pushToGist(cfg.token, cfg.gistId, PROGRESS);
+    renderStats();
+    renderHome();
+    statusEl.textContent = `已同步（${new Date().toLocaleTimeString('zh-TW')}）`;
+    statusEl.classList.remove('err'); statusEl.classList.add('ok');
+  } catch (e) {
+    statusEl.textContent = '同步失敗：' + e.message;
+    statusEl.classList.remove('ok'); statusEl.classList.add('err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔄 立即同步';
+  }
+};
+
+document.getElementById('btn-sync-disconnect').onclick = () => {
+  if (confirm('確定要中斷同步嗎？本機的進度會保留，但不會再自動更新到雲端。')) {
+    disconnectSync();
+    renderSyncUI();
+  }
+};
+
 /* 鍵盤:空白鍵翻面,左右方向鍵換卡(桌機測試用) */
 document.addEventListener('keydown', (ev) => {
   if (!document.getElementById('view-session').classList.contains('active')) return;
@@ -521,3 +706,7 @@ document.addEventListener('keydown', (ev) => {
 
 /* ---------- init ---------- */
 renderHome();
+pullSyncOnLoad().then(() => {
+  // only refresh the visible screen; don't yank the user out of an active session
+  if (document.querySelector('.view.active').id === 'view-home') renderHome();
+});

@@ -174,6 +174,27 @@ html,body{
 .backup-row{display:flex;gap:10px;margin:10px 0 18px;}
 .danger-btn{width:100%;padding:13px;border:none;border-radius:14px;background:rgba(248,113,113,.15);color:var(--danger);font-weight:700;cursor:pointer;}
 
+.setting-row{display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--card);border-radius:14px;padding:14px 16px;margin:10px 0 18px;}
+.setting-title{font-size:14.5px;font-weight:700;}
+.setting-sub{font-size:12px;color:var(--text-dim);margin-top:2px;}
+.switch{
+  flex-shrink:0;width:46px;height:28px;border-radius:16px;border:none;
+  background:var(--card2);position:relative;cursor:pointer;padding:0;transition:background .2s;
+}
+.switch[aria-checked="true"]{background:var(--accent);}
+.switch-knob{
+  position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;
+  background:#fff;transition:transform .2s;
+}
+.switch[aria-checked="true"] .switch-knob{transform:translateX(18px);}
+.sync-input{
+  flex:1;min-width:0;padding:12px 14px;border-radius:14px;border:1px solid #2b3140;
+  background:var(--card);color:var(--text);font-size:13px;
+}
+.sync-input::placeholder{color:var(--text-dim);}
+#sync-status.ok{color:var(--good);}
+#sync-status.err{color:var(--danger);}
+
 @media (max-width:360px){
   .card-word{font-size:30px;}
   .hero-day{font-size:24px;}

@@ -149,8 +149,38 @@
       <div class="stats-grid" id="stats-grid"></div>
       <h3>各天進度</h3>
       <div id="stats-days"></div>
+
+      <h3>偏好設定</h3>
+      <div class="setting-row">
+        <div class="setting-text">
+          <div class="setting-title">卡片預設看背面</div>
+          <div class="setting-sub">開啟後翻卡直接看到中文/定義，不用先點正面</div>
+        </div>
+        <button id="toggle-default-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+      </div>
+
+      <h3>跨裝置同步</h3>
+      <p class="stats-note" id="sync-status">尚未連接。連接後手機和電腦會自動同步同一份進度。</p>
+      <div id="sync-connect-box">
+        <p class="stats-note">
+          用你的 GitHub 帳號建立一個私人 Gist 當作同步空間：
+          <a href="https://github.com/settings/tokens/new?description=LilyGRE%20Vocab%20Sync&scopes=gist" target="_blank" rel="noopener">點此建立權限僅限「gist」的 Token</a>，
+          複製後貼在下面。
+        </p>
+        <div class="backup-row">
+          <input type="password" id="sync-token-input" placeholder="貼上 GitHub Token（ghp_ 開頭）" class="sync-input">
+          <button id="btn-sync-connect" class="secondary-btn">連接</button>
+        </div>
+      </div>
+      <div id="sync-connected-box" style="display:none">
+        <div class="backup-row">
+          <button id="btn-sync-now" class="secondary-btn">🔄 立即同步</button>
+          <button id="btn-sync-disconnect" class="secondary-btn">中斷連接</button>
+        </div>
+      </div>
+
       <h3>資料備份</h3>
-      <p class="stats-note">學習進度只存在這個瀏覽器裡。換裝置前記得匯出備份。</p>
+      <p class="stats-note">沒連同步的話，進度只存在這個瀏覽器裡，換裝置前記得匯出備份。</p>
       <div class="backup-row">
         <button id="btn-export" class="secondary-btn">⬇️ 匯出進度</button>
         <button id="btn-import" class="secondary-btn">⬆️ 匯入進度</button>
