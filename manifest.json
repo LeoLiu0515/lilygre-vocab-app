@@ -1,0 +1,15 @@
+{
+  "name": "字根單字通勤機",
+  "short_name": "單字通勤機",
+  "description": "LilyGRE 字根編排單字本 — 離線通勤背單字",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
