@@ -57,6 +57,11 @@ function saveProgress(skipSync) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(PROGRESS));
   if (!skipSync) scheduleSyncPush();
 }
+// 純本機記錄(如每日換天),不更新 updatedAt——避免「才剛打開網頁」就讓
+// 本機舊資料看起來比雲端新。
+function saveLocalOnly() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(PROGRESS));
+}
 
 function getState(num) {
   return PROGRESS.words[num] || { box: 0, due: null, reps: 0, lapses: 0, seen: false };
@@ -125,8 +130,24 @@ async function pushToGist(token, gistId, data) {
 
 function mergeProgress(local, remote) {
   if (!remote) return local;
-  if (!local.updatedAt || remote.updatedAt > local.updatedAt) return Object.assign(defaultProgress(), remote);
-  return local;
+  // 以較新的一份為基底(currentDay、設定等),但單字進度採「逐字聯集」,
+  // 任何一台裝置都不可能把另一台已背過的字洗掉。
+  const base = (remote.updatedAt || 0) > (local.updatedAt || 0) ? remote : local;
+  const out = Object.assign(defaultProgress(), base);
+  out.settings = Object.assign(defaultProgress().settings, base.settings || {});
+  out.words = {};
+  const nums = new Set([...Object.keys(local.words || {}), ...Object.keys(remote.words || {})]);
+  for (const n of nums) {
+    const a = (local.words || {})[n];
+    const b = (remote.words || {})[n];
+    if (!a) { out.words[n] = b; continue; }
+    if (!b) { out.words[n] = a; continue; }
+    // 兩邊都有:取複習次數多的;平手取 box 高的(較熟)
+    out.words[n] = (b.reps || 0) > (a.reps || 0) ||
+      ((b.reps || 0) === (a.reps || 0) && (b.box || 0) > (a.box || 0)) ? b : a;
+  }
+  out.streak = Math.max(local.streak || 0, remote.streak || 0);
+  return out;
 }
 
 async function connectSync(token) {
@@ -147,9 +168,13 @@ function disconnectSync() {
 }
 
 let syncPushTimer = null;
+// 開站時本機可能還是舊資料:在完成第一次雲端拉取前,禁止任何自動上傳,
+// 避免筆電用舊進度把手機的新進度蓋掉。
+let syncPullDone = !getSyncConfig();
+
 function scheduleSyncPush() {
   const cfg = getSyncConfig();
-  if (!cfg) return;
+  if (!cfg || !syncPullDone) return;
   clearTimeout(syncPushTimer);
   syncPushTimer = setTimeout(() => {
     pushToGist(cfg.token, cfg.gistId, PROGRESS).catch(() => {});
@@ -158,26 +183,27 @@ function scheduleSyncPush() {
 
 async function pullSyncOnLoad() {
   const cfg = getSyncConfig();
-  if (!cfg) return;
+  if (!cfg) { syncPullDone = true; return; }
   try {
     const remote = await pullFromGist(cfg.token, cfg.gistId);
     PROGRESS = mergeProgress(PROGRESS, remote);
     saveProgress(true);
   } catch (e) { /* offline or token revoked — keep working locally */ }
+  finally { syncPullDone = true; }
 }
 
 function ensureDayAdvance() {
   const today = todayStr();
   if (!PROGRESS.lastAdvanceDate) {
     PROGRESS.lastAdvanceDate = today;
-    saveProgress();
+    saveLocalOnly();
     return;
   }
   if (PROGRESS.lastAdvanceDate !== today) {
     const diff = Math.max(1, daysBetween(PROGRESS.lastAdvanceDate, today));
     PROGRESS.currentDay = ((PROGRESS.currentDay - 1 + diff) % TOTAL_DAYS) + 1;
     PROGRESS.lastAdvanceDate = today;
-    saveProgress();
+    saveLocalOnly();
   }
 }
 
@@ -329,15 +355,21 @@ function renderCard() {
   document.getElementById('card-word-back').textContent = e.word;
   document.getElementById('card-root-back').textContent =
     e.root ? '🌱 ' + e.root + (e.root_gloss ? ' — ' + e.root_gloss : '') : '';
-  document.getElementById('card-mnemonic').textContent = e.mnemonic || (e.meaning_zh || []).join('；');
+  const hookEl = document.getElementById('card-mnemonic');
+  hookEl.textContent = e.mnemonic || '';
+  hookEl.style.display = e.mnemonic ? '' : 'none';
   document.getElementById('card-zh').textContent = (e.meaning_zh || []).join('；');
   document.getElementById('card-example').innerHTML = (e.example || []).map(x => escapeHtml(x)).join('<br><br>');
   document.getElementById('card-example-wrap').style.display = (e.example || []).length ? '' : 'none';
+  document.getElementById('card-syn').textContent = (e.synonyms || []).join(', ').replace(/,\s*$/, '');
+  document.getElementById('card-syn-wrap').style.display = (e.synonyms || []).length ? '' : 'none';
 
   exposeWord(e.num); // 看過即標記,更新進度
-  const pct = Math.round((session.idx + 1) / session.queue.length * 100);
+  // 進度條顯示「當天累積進度」而非本回合進度,退出再進來會接續
+  const st = dayStats(PROGRESS.currentDay);
+  const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
   document.getElementById('session-progress-fill').style.width = pct + '%';
-  document.getElementById('session-progress-count').textContent = `${session.idx + 1} / ${session.queue.length}`;
+  document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
   document.getElementById('session-progress-pct').textContent = pct + '%';
 }
 
