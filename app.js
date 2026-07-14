@@ -361,19 +361,23 @@ function renderCard() {
   session.flipped = !!PROGRESS.settings.defaultFlipped;
   card.classList.toggle('flipped', session.flipped);
 
-  document.getElementById('card-root').textContent = e.root ? '🌱 ' + e.root : '';
+  document.getElementById('card-root').textContent = e.root || '';
+  document.getElementById('card-root').style.display = e.root ? '' : 'none';
   document.getElementById('card-word').textContent = e.word;
   document.getElementById('card-word-back').textContent = e.word;
-  document.getElementById('card-root-back').textContent =
-    e.root ? '🌱 ' + e.root + (e.root_gloss ? ' — ' + e.root_gloss : '') : '';
+  const rootBack = document.getElementById('card-root-back');
+  rootBack.textContent = e.root ? e.root + (e.root_gloss ? '　' + e.root_gloss : '') : '';
+  rootBack.style.display = e.root ? '' : 'none';
   const hookEl = document.getElementById('card-mnemonic');
   hookEl.textContent = e.mnemonic || '';
   hookEl.style.display = e.mnemonic ? '' : 'none';
   document.getElementById('card-zh').textContent = (e.meaning_zh || []).join('；');
   document.getElementById('card-example').innerHTML = (e.example || []).map(x => escapeHtml(x)).join('<br><br>');
   document.getElementById('card-example-wrap').style.display = (e.example || []).length ? '' : 'none';
-  document.getElementById('card-syn').textContent = (e.synonyms || []).join(', ').replace(/,\s*$/, '');
-  document.getElementById('card-syn-wrap').style.display = (e.synonyms || []).length ? '' : 'none';
+  const synTokens = (e.synonyms || []).join(',').split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  document.getElementById('card-syn').innerHTML =
+    synTokens.map(s => '<span class="syn-chip">' + escapeHtml(s) + '</span>').join('');
+  document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
   exposeWord(e.num); // 看過即標記,更新進度
   // 進度條顯示「當天累積進度」(排除已封存),退出再進來會接續
@@ -475,7 +479,8 @@ function renderQuiz() {
   const e = quiz.queue[quiz.idx];
   if (!e) { finishQuiz(); return; }
   document.getElementById('quiz-word').textContent = e.word;
-  document.getElementById('quiz-root').textContent = e.root ? '🌱 ' + e.root : '';
+  document.getElementById('quiz-root').textContent = e.root || '';
+  document.getElementById('quiz-root').style.display = e.root ? '' : 'none';
 
   const correct = (e.meaning_zh && e.meaning_zh[0]) || '（無資料）';
   let sameRoot = VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num && x.meaning_zh && x.meaning_zh[0]);
