@@ -379,6 +379,14 @@ function renderCard() {
     synTokens.map(s => '<span class="syn-chip">' + escapeHtml(s) + '</span>').join('');
   document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
+  // 同根字家族:同一字根的其他字,一起記(字根法核心)
+  const family = e.root ? VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num).slice(0, 8) : [];
+  document.getElementById('card-family').innerHTML = family.map(x =>
+    '<span class="fam-chip"><b>' + escapeHtml(x.word) + '</b> ' +
+    escapeHtml(((x.meaning_zh || [])[0] || '').split(/[；;，,]/)[0]) + '</span>'
+  ).join('');
+  document.getElementById('card-family-wrap').style.display = family.length ? '' : 'none';
+
   exposeWord(e.num); // 看過即標記,更新進度
   // 進度條顯示「當天累積進度」(排除已封存),退出再進來會接續
   const st = dayStats(PROGRESS.currentDay);
