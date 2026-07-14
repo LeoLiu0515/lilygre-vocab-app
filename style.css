@@ -91,7 +91,16 @@ html,body{
 .session-progress-label{display:flex;justify-content:space-between;font-size:11.5px;font-weight:700;color:var(--text-dim);padding:0 1px;}
 #session-progress-pct{color:var(--accent);}
 
-.card-stage{flex:1;display:flex;align-items:stretch;justify-content:center;padding:8px 14px 4px;perspective:1400px;}
+.card-stage{flex:1;display:flex;align-items:stretch;justify-content:center;padding:8px 14px 14px;overflow:hidden;}
+#card-swiper{
+  flex:1;display:flex;align-items:stretch;justify-content:center;perspective:1400px;
+  transition:transform .18s ease,opacity .18s ease;
+}
+#card-swiper.exit-up{transform:translateY(-90px);opacity:0;}
+#card-swiper.exit-down{transform:translateY(90px);opacity:0;}
+#card-swiper.enter-up{transition:none;transform:translateY(90px);opacity:0;}
+#card-swiper.enter-down{transition:none;transform:translateY(-90px);opacity:0;}
+.icon-btn.starred{color:var(--warn);}
 .flashcard{
   width:100%;max-width:440px;min-height:0;position:relative;
   transform-style:preserve-3d;transition:transform .5s cubic-bezier(.4,.2,.2,1);

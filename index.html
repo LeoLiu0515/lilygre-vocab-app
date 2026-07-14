@@ -51,6 +51,9 @@
       <button id="btn-quiz-mode" class="secondary-btn">✏️ 選擇題測驗</button>
       <button id="btn-listen-mode" class="secondary-btn">🎧 聽力模式（免看）</button>
     </div>
+    <div class="mode-row" style="margin-top:10px">
+      <button id="btn-star-mode" class="secondary-btn">⭐ 難字複習（0）</button>
+    </div>
 
     <div class="day-picker">
       <div class="day-picker-label">跳到指定天數</div>
@@ -69,15 +72,17 @@
           <span id="session-progress-pct">0%</span>
         </div>
       </div>
+      <button id="btn-star" class="icon-btn" title="標記難字">☆</button>
       <button id="btn-speak" class="icon-btn" title="發音">🔊</button>
     </header>
 
     <div class="card-stage">
+      <div id="card-swiper">
       <div id="flashcard" class="flashcard">
         <div class="card-face card-front">
           <div class="card-root" id="card-root"></div>
           <div class="card-word" id="card-word"></div>
-          <div class="card-hint">點卡片看解答 · 向左/右滑看下一個</div>
+          <div class="card-hint">點卡片看解答 · 上滑看下一個</div>
         </div>
         <div class="card-face card-back">
           <div class="card-word-small" id="card-word-back"></div>
@@ -94,11 +99,7 @@
           </div>
         </div>
       </div>
-    </div>
-
-    <div class="nav-row">
-      <button id="btn-prev" class="nav-btn">‹ 上一個</button>
-      <button id="btn-next" class="nav-btn">下一個 ›</button>
+      </div>
     </div>
   </section>
 

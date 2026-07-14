@@ -143,8 +143,11 @@ function mergeProgress(local, remote) {
     if (!a) { out.words[n] = b; continue; }
     if (!b) { out.words[n] = a; continue; }
     // 兩邊都有:取複習次數多的;平手取 box 高的(較熟)
-    out.words[n] = (b.reps || 0) > (a.reps || 0) ||
+    const chosen = (b.reps || 0) > (a.reps || 0) ||
       ((b.reps || 0) === (a.reps || 0) && (b.box || 0) > (a.box || 0)) ? b : a;
+    // 難字標記兩邊取聯集,任何一邊標過都保留
+    chosen.star = !!(a.star || b.star);
+    out.words[n] = chosen;
   }
   out.streak = Math.max(local.streak || 0, remote.streak || 0);
   return out;
@@ -311,6 +314,9 @@ function renderHome() {
   document.getElementById('stat-new').textContent = newList(pool).length;
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
+  const starCount = VOCAB_DATA.filter(e => isStarred(e.num)).length;
+  document.getElementById('btn-star-mode').textContent = `⭐ 難字複習（${starCount}）`;
+
   const dotsEl = document.getElementById('day-dots');
   dotsEl.innerHTML = '';
   for (let d = 1; d <= TOTAL_DAYS; d++) {
@@ -323,19 +329,33 @@ function renderHome() {
   }
 }
 
-/* ---------- FLASHCARD SESSION (簡潔線性瀏覽) ---------- */
-let session = { queue: [], idx: 0, flipped: false };
+/* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */
+let session = { queue: [], idx: 0, flipped: false, mode: 'day' };
+
+function isStarred(num) { return !!getState(num).star; }
 
 function startSession() {
   // 當天的字,依順序;把還沒學過的排前面,學過的排後面(方便一週一輪)
   const pool = (byDay[PROGRESS.currentDay] || []).slice();
   const unseen = pool.filter(e => !isSeen(e.num));
   const seen = pool.filter(e => isSeen(e.num));
-  session = { queue: unseen.concat(seen), idx: 0, flipped: false };
+  session = { queue: unseen.concat(seen), idx: 0, flipped: false, mode: 'day' };
   if (session.queue.length === 0) {
     alert('這一天沒有單字，換一天試試。');
     return;
   }
+  touchStreak();
+  showView('view-session');
+  renderCard();
+}
+
+function startStarSession() {
+  const starred = VOCAB_DATA.filter(e => isStarred(e.num));
+  if (starred.length === 0) {
+    alert('還沒有標記任何難字。背卡時點右上角的 ☆ 就能加入。');
+    return;
+  }
+  session = { queue: starred, idx: 0, flipped: false, mode: 'star' };
   touchStreak();
   showView('view-session');
   renderCard();
@@ -364,13 +384,24 @@ function renderCard() {
   document.getElementById('card-syn').textContent = (e.synonyms || []).join(', ').replace(/,\s*$/, '');
   document.getElementById('card-syn-wrap').style.display = (e.synonyms || []).length ? '' : 'none';
 
+  document.getElementById('btn-star').textContent = isStarred(e.num) ? '★' : '☆';
+  document.getElementById('btn-star').classList.toggle('starred', isStarred(e.num));
+
   exposeWord(e.num); // 看過即標記,更新進度
-  // 進度條顯示「當天累積進度」而非本回合進度,退出再進來會接續
-  const st = dayStats(PROGRESS.currentDay);
-  const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
-  document.getElementById('session-progress-fill').style.width = pct + '%';
-  document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
-  document.getElementById('session-progress-pct').textContent = pct + '%';
+  if (session.mode === 'star') {
+    // 難字模式:顯示在清單中的位置
+    const pct = Math.round((session.idx + 1) / session.queue.length * 100);
+    document.getElementById('session-progress-fill').style.width = pct + '%';
+    document.getElementById('session-progress-count').textContent = `⭐ ${session.idx + 1} / ${session.queue.length}`;
+    document.getElementById('session-progress-pct').textContent = pct + '%';
+  } else {
+    // 進度條顯示「當天累積進度」而非本回合進度,退出再進來會接續
+    const st = dayStats(PROGRESS.currentDay);
+    const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
+    document.getElementById('session-progress-fill').style.width = pct + '%';
+    document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
+    document.getElementById('session-progress-pct').textContent = pct + '%';
+  }
 }
 
 function escapeHtml(s) {
@@ -383,21 +414,51 @@ function flipCard() {
   card.classList.toggle('flipped', session.flipped);
 }
 
+/* Reels 式滑動過場:舊卡滑出 → 換內容 → 新卡從反方向滑入。
+   用計時器而非 rAF:背景分頁 rAF 會被凍結,可能讓卡片卡在透明狀態。 */
+let swapping = false;
+function animateSwap(dir, apply) {
+  if (swapping) return;
+  swapping = true;
+  const sw = document.getElementById('card-swiper');
+  const enterCls = dir === 'up' ? 'enter-up' : 'enter-down';
+  sw.classList.add(dir === 'up' ? 'exit-up' : 'exit-down');
+  setTimeout(() => {
+    apply();
+    sw.classList.remove('exit-up', 'exit-down');
+    sw.classList.add(enterCls);
+    void sw.offsetHeight; // 強制重排,讓進場起始位置先生效
+    setTimeout(() => {
+      sw.classList.remove(enterCls);
+      swapping = false;
+    }, 30);
+  }, 180);
+  // 保險絲:無論如何 700ms 後恢復可見與可操作
+  setTimeout(() => {
+    sw.classList.remove('exit-up', 'exit-down', 'enter-up', 'enter-down');
+    swapping = false;
+  }, 700);
+}
+
 function nextCard() {
   if (session.idx >= session.queue.length - 1) { finishSession(); return; }
-  session.idx++;
-  renderCard();
+  animateSwap('up', () => { session.idx++; renderCard(); });
 }
 function prevCard() {
   if (session.idx <= 0) return;
-  session.idx--;
-  renderCard();
+  animateSwap('down', () => { session.idx--; renderCard(); });
 }
 
 function finishSession() {
-  const st = dayStats(PROGRESS.currentDay);
-  document.getElementById('done-stats').innerHTML =
-    `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已學過 <b>${st.seen}/${st.total}</b> 字`;
+  if (session.mode === 'star') {
+    const n = VOCAB_DATA.filter(e => isStarred(e.num)).length;
+    document.getElementById('done-stats').innerHTML =
+      `難字複習完成！<br><br>目前標記中的難字:<b>${n}</b> 個<br>記熟的字再點一次 ★ 就會移出清單`;
+  } else {
+    const st = dayStats(PROGRESS.currentDay);
+    document.getElementById('done-stats').innerHTML =
+      `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已學過 <b>${st.seen}/${st.total}</b> 字`;
+  }
   document.getElementById('btn-done-next').style.display = 'none';
   showView('view-done');
 }
@@ -616,8 +677,18 @@ document.getElementById('btn-exit-session').onclick = () => {
   showView('view-home'); renderHome();
 };
 document.getElementById('flashcard').onclick = flipCard;
-document.getElementById('btn-next').onclick = nextCard;
-document.getElementById('btn-prev').onclick = prevCard;
+document.getElementById('btn-star').onclick = (ev) => {
+  ev.stopPropagation();
+  const e = currentEntry();
+  if (!e) return;
+  const st = getState(e.num);
+  st.star = !st.star;
+  setState(e.num, st);
+  saveProgress();
+  ev.currentTarget.textContent = st.star ? '★' : '☆';
+  ev.currentTarget.classList.toggle('starred', st.star);
+};
+document.getElementById('btn-star-mode').onclick = startStarSession;
 document.getElementById('btn-speak').onclick = (ev) => {
   ev.stopPropagation();
   const e = currentEntry();
@@ -714,30 +785,49 @@ document.getElementById('btn-sync-disconnect').onclick = () => {
   }
 };
 
-/* 鍵盤:空白鍵翻面,左右方向鍵換卡(桌機測試用) */
+/* 鍵盤:空白鍵翻面,上下(或左右)方向鍵換卡(桌機測試用) */
 document.addEventListener('keydown', (ev) => {
   if (!document.getElementById('view-session').classList.contains('active')) return;
   if (ev.code === 'Space') { ev.preventDefault(); flipCard(); }
-  if (ev.key === 'ArrowRight') nextCard();
-  if (ev.key === 'ArrowLeft') prevCard();
+  if (ev.key === 'ArrowUp' || ev.key === 'ArrowRight') { ev.preventDefault(); nextCard(); }
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowLeft') { ev.preventDefault(); prevCard(); }
 });
 
-/* 滑動:向左看下一個,向右看上一個 */
+/* Reels 式滑動:上滑=下一個,下滑=上一個。
+   卡片背面內容太長可捲動時,先讓它捲,捲到底/頂才觸發換卡。 */
 (function () {
-  let startX = null, startY = null;
+  let startX = null, startY = null, startTime = 0;
   const stage = document.querySelector('.card-stage');
+
+  function backAtTop() {
+    const el = document.querySelector('.card-back');
+    return !session.flipped || el.scrollTop < 5;
+  }
+  function backAtBottom() {
+    const el = document.querySelector('.card-back');
+    return !session.flipped || (el.scrollHeight - el.scrollTop - el.clientHeight) < 5;
+  }
+
   stage.addEventListener('touchstart', (ev) => {
-    const t = ev.touches[0]; startX = t.clientX; startY = t.clientY;
+    const t = ev.touches[0];
+    startX = t.clientX; startY = t.clientY; startTime = Date.now();
   }, { passive: true });
+
   stage.addEventListener('touchend', (ev) => {
-    if (startX === null) { startX = null; return; }
+    if (startX === null) return;
     const t = ev.changedTouches[0];
     const dx = t.clientX - startX, dy = t.clientY - startY;
-    if (Math.abs(dx) > 60 && Math.abs(dy) < 60) {
-      if (dx < 0) nextCard(); else prevCard();
-    }
+    const fast = (Date.now() - startTime) < 350;
     startX = null;
-  });
+    if (Math.abs(dy) < 60 || Math.abs(dx) > Math.abs(dy)) return; // 不是明確的縱向滑動
+    if (dy < 0) {
+      // 上滑 → 下一個(背面還沒捲到底時,快滑才換卡)
+      if (backAtBottom() || fast) nextCard();
+    } else {
+      // 下滑 → 上一個
+      if (backAtTop() || fast) prevCard();
+    }
+  }, { passive: true });
 })();
 
 /* ---------- init ---------- */
