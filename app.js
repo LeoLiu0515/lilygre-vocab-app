@@ -145,8 +145,9 @@ function mergeProgress(local, remote) {
     // 兩邊都有:取複習次數多的;平手取 box 高的(較熟)
     const chosen = (b.reps || 0) > (a.reps || 0) ||
       ((b.reps || 0) === (a.reps || 0) && (b.box || 0) > (a.box || 0)) ? b : a;
-    // 難字標記兩邊取聯集,任何一邊標過都保留
+    // 難字標記與封存狀態兩邊取聯集,任何一邊操作過都保留
     chosen.star = !!(a.star || b.star);
+    chosen.archived = !!(a.archived || b.archived);
     out.words[n] = chosen;
   }
   out.streak = Math.max(local.streak || 0, remote.streak || 0);
@@ -238,7 +239,8 @@ function newList(pool) {
 }
 
 function dayStats(dayNum) {
-  const pool = byDay[dayNum] || [];
+  // 已封存的字視為「不存在」:不列入總數也不列入待學
+  const pool = (byDay[dayNum] || []).filter(e => !isArchived(e.num));
   const seenCount = pool.filter(e => isSeen(e.num)).length;
   return { total: pool.length, seen: seenCount, pct: pool.length ? Math.round(seenCount / pool.length * 100) : 0 };
 }
@@ -314,8 +316,6 @@ function renderHome() {
   document.getElementById('stat-new').textContent = newList(pool).length;
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
-  const starCount = VOCAB_DATA.filter(e => isStarred(e.num)).length;
-  document.getElementById('btn-star-mode').textContent = `⭐ 難字複習（${starCount}）`;
 
   const dotsEl = document.getElementById('day-dots');
   dotsEl.innerHTML = '';
@@ -330,32 +330,23 @@ function renderHome() {
 }
 
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */
-let session = { queue: [], idx: 0, flipped: false, mode: 'day' };
+let session = { queue: [], idx: 0, flipped: false };
 
-function isStarred(num) { return !!getState(num).star; }
-
-function startSession() {
-  // 當天的字,依順序;把還沒學過的排前面,學過的排後面(方便一週一輪)
-  const pool = (byDay[PROGRESS.currentDay] || []).slice();
-  const unseen = pool.filter(e => !isSeen(e.num));
-  const seen = pool.filter(e => isSeen(e.num));
-  session = { queue: unseen.concat(seen), idx: 0, flipped: false, mode: 'day' };
-  if (session.queue.length === 0) {
-    alert('這一天沒有單字，換一天試試。');
-    return;
-  }
-  touchStreak();
-  showView('view-session');
-  renderCard();
+function isArchived(num) { return !!getState(num).archived; }
+function activeDayPool(dayNum) {
+  return (byDay[dayNum] || []).filter(e => !isArchived(e.num));
 }
 
-function startStarSession() {
-  const starred = VOCAB_DATA.filter(e => isStarred(e.num));
-  if (starred.length === 0) {
-    alert('還沒有標記任何難字。背卡時點右上角的 ☆ 就能加入。');
+function startSession() {
+  // 當天還沒封存的字,依順序;沒學過的排前面,學過的排後面(方便一週一輪)
+  const pool = activeDayPool(PROGRESS.currentDay);
+  const unseen = pool.filter(e => !isSeen(e.num));
+  const seen = pool.filter(e => isSeen(e.num));
+  session = { queue: unseen.concat(seen), idx: 0, flipped: false };
+  if (session.queue.length === 0) {
+    alert('這一天的字都封存完了,太強了!換一天,或到統計頁復原已封存的字。');
     return;
   }
-  session = { queue: starred, idx: 0, flipped: false, mode: 'star' };
   touchStreak();
   showView('view-session');
   renderCard();
@@ -384,24 +375,13 @@ function renderCard() {
   document.getElementById('card-syn').textContent = (e.synonyms || []).join(', ').replace(/,\s*$/, '');
   document.getElementById('card-syn-wrap').style.display = (e.synonyms || []).length ? '' : 'none';
 
-  document.getElementById('btn-star').textContent = isStarred(e.num) ? '★' : '☆';
-  document.getElementById('btn-star').classList.toggle('starred', isStarred(e.num));
-
   exposeWord(e.num); // 看過即標記,更新進度
-  if (session.mode === 'star') {
-    // 難字模式:顯示在清單中的位置
-    const pct = Math.round((session.idx + 1) / session.queue.length * 100);
-    document.getElementById('session-progress-fill').style.width = pct + '%';
-    document.getElementById('session-progress-count').textContent = `⭐ ${session.idx + 1} / ${session.queue.length}`;
-    document.getElementById('session-progress-pct').textContent = pct + '%';
-  } else {
-    // 進度條顯示「當天累積進度」而非本回合進度,退出再進來會接續
-    const st = dayStats(PROGRESS.currentDay);
-    const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
-    document.getElementById('session-progress-fill').style.width = pct + '%';
-    document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
-    document.getElementById('session-progress-pct').textContent = pct + '%';
-  }
+  // 進度條顯示「當天累積進度」(排除已封存),退出再進來會接續
+  const st = dayStats(PROGRESS.currentDay);
+  const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
+  document.getElementById('session-progress-fill').style.width = pct + '%';
+  document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
+  document.getElementById('session-progress-pct').textContent = pct + '%';
 }
 
 function escapeHtml(s) {
@@ -414,51 +394,64 @@ function flipCard() {
   card.classList.toggle('flipped', session.flipped);
 }
 
-/* Reels 式滑動過場:舊卡滑出 → 換內容 → 新卡從反方向滑入。
-   用計時器而非 rAF:背景分頁 rAF 會被凍結,可能讓卡片卡在透明狀態。 */
+/* Reels 式過場:整張卡飛出畫面 → 換內容 → 從反方向滑入。
+   全用計時器與行內樣式,避免背景分頁 rAF 凍結造成卡片卡在透明狀態。 */
 let swapping = false;
-function animateSwap(dir, apply) {
+function flySwap(dir, apply) {
   if (swapping) return;
   swapping = true;
   const sw = document.getElementById('card-swiper');
-  const enterCls = dir === 'up' ? 'enter-up' : 'enter-down';
-  sw.classList.add(dir === 'up' ? 'exit-up' : 'exit-down');
+  const h = document.querySelector('.card-stage').clientHeight || 600;
+  const out = dir === 'up' ? -h : h;
+  sw.style.transition = 'transform .17s cubic-bezier(.3,.7,.5,1),opacity .17s ease';
+  sw.style.transform = `translateY(${out}px)`;
+  sw.style.opacity = '0.15';
   setTimeout(() => {
     apply();
-    sw.classList.remove('exit-up', 'exit-down');
-    sw.classList.add(enterCls);
-    void sw.offsetHeight; // 強制重排,讓進場起始位置先生效
-    setTimeout(() => {
-      sw.classList.remove(enterCls);
-      swapping = false;
-    }, 30);
-  }, 180);
-  // 保險絲:無論如何 700ms 後恢復可見與可操作
+    sw.style.transition = 'none';
+    sw.style.transform = `translateY(${-out * 0.9}px)`;
+    void sw.offsetHeight;
+    sw.style.transition = 'transform .24s cubic-bezier(.17,.84,.35,1),opacity .24s ease';
+    sw.style.transform = '';
+    sw.style.opacity = '';
+    setTimeout(() => { sw.style.transition = ''; swapping = false; }, 260);
+  }, 170);
+  // 保險絲:無論如何 800ms 後恢復可見與可操作
   setTimeout(() => {
-    sw.classList.remove('exit-up', 'exit-down', 'enter-up', 'enter-down');
+    sw.style.transition = ''; sw.style.transform = ''; sw.style.opacity = '';
     swapping = false;
-  }, 700);
+  }, 800);
 }
 
 function nextCard() {
   if (session.idx >= session.queue.length - 1) { finishSession(); return; }
-  animateSwap('up', () => { session.idx++; renderCard(); });
+  flySwap('up', () => { session.idx++; renderCard(); });
 }
 function prevCard() {
   if (session.idx <= 0) return;
-  animateSwap('down', () => { session.idx--; renderCard(); });
+  flySwap('down', () => { session.idx--; renderCard(); });
+}
+
+function archiveCurrent() {
+  const e = currentEntry();
+  if (!e) return;
+  const st = getState(e.num);
+  st.archived = true;
+  st.seen = true;
+  setState(e.num, st);
+  saveProgress();
+  session.queue.splice(session.idx, 1);
+  if (session.queue.length === 0) { finishSession(); return; }
+  if (session.idx >= session.queue.length) session.idx = session.queue.length - 1;
+  flySwap('up', () => renderCard());
 }
 
 function finishSession() {
-  if (session.mode === 'star') {
-    const n = VOCAB_DATA.filter(e => isStarred(e.num)).length;
-    document.getElementById('done-stats').innerHTML =
-      `難字複習完成！<br><br>目前標記中的難字:<b>${n}</b> 個<br>記熟的字再點一次 ★ 就會移出清單`;
-  } else {
-    const st = dayStats(PROGRESS.currentDay);
-    document.getElementById('done-stats').innerHTML =
-      `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已學過 <b>${st.seen}/${st.total}</b> 字`;
-  }
+  const st = dayStats(PROGRESS.currentDay);
+  const archived = VOCAB_DATA.filter(e => isArchived(e.num)).length;
+  document.getElementById('done-stats').innerHTML =
+    `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已學過 <b>${st.seen}/${st.total}</b> 字` +
+    (archived ? `<br>已封存 <b>${archived}</b> 個已會的字` : '');
   document.getElementById('btn-done-next').style.display = 'none';
   showView('view-done');
 }
@@ -467,7 +460,7 @@ function finishSession() {
 let quiz = { queue: [], idx: 0, score: 0 };
 
 function startQuiz() {
-  const pool = byDay[PROGRESS.currentDay] || VOCAB_DATA;
+  const pool = activeDayPool(PROGRESS.currentDay);
   quiz = { queue: shuffle(pool).slice(0, 15), idx: 0, score: 0 };
   if (quiz.queue.length < 4) {
     alert('這天的單字量不足以出選擇題，換一天試試。');
@@ -529,8 +522,8 @@ function finishQuiz() {
 let listen = { queue: [], idx: 0, playing: false };
 
 function startListen() {
-  const pool = byDay[PROGRESS.currentDay] || [];
-  listen.queue = shuffle(dueList(VOCAB_DATA).concat(newList(pool))).slice(0, 40);
+  const pool = activeDayPool(PROGRESS.currentDay);
+  listen.queue = shuffle(pool.filter(e => !isSeen(e.num))).slice(0, 40);
   if (listen.queue.length === 0) listen.queue = shuffle(pool).slice(0, 40);
   listen.idx = 0;
   listen.playing = true;
@@ -619,7 +612,33 @@ function renderStats() {
   }
 
   document.getElementById('toggle-default-flip').setAttribute('aria-checked', String(!!PROGRESS.settings.defaultFlipped));
+  renderArchivedList();
   renderSyncUI();
+}
+
+function renderArchivedList() {
+  const wrap = document.getElementById('archived-list');
+  const archived = VOCAB_DATA.filter(e => isArchived(e.num));
+  wrap.innerHTML = '';
+  if (archived.length === 0) {
+    wrap.innerHTML = '<div class="archived-empty">還沒有封存任何字。</div>';
+    return;
+  }
+  for (const e of archived) {
+    const row = document.createElement('div');
+    row.className = 'archived-row';
+    row.innerHTML = `<span class="aw">${e.word}</span><span class="az">${(e.meaning_zh || []).join('；')}</span><span class="ar">復原</span>`;
+    row.onclick = () => {
+      const st = getState(e.num);
+      st.archived = false;
+      setState(e.num, st);
+      saveProgress();
+      renderStats();
+      renderHome();
+      showView('view-stats');
+    };
+    wrap.appendChild(row);
+  }
 }
 
 function renderSyncUI() {
@@ -677,18 +696,10 @@ document.getElementById('btn-exit-session').onclick = () => {
   showView('view-home'); renderHome();
 };
 document.getElementById('flashcard').onclick = flipCard;
-document.getElementById('btn-star').onclick = (ev) => {
+document.getElementById('btn-archive').onclick = (ev) => {
   ev.stopPropagation();
-  const e = currentEntry();
-  if (!e) return;
-  const st = getState(e.num);
-  st.star = !st.star;
-  setState(e.num, st);
-  saveProgress();
-  ev.currentTarget.textContent = st.star ? '★' : '☆';
-  ev.currentTarget.classList.toggle('starred', st.star);
+  archiveCurrent();
 };
-document.getElementById('btn-star-mode').onclick = startStarSession;
 document.getElementById('btn-speak').onclick = (ev) => {
   ev.stopPropagation();
   const e = currentEntry();
@@ -793,41 +804,94 @@ document.addEventListener('keydown', (ev) => {
   if (ev.key === 'ArrowDown' || ev.key === 'ArrowLeft') { ev.preventDefault(); prevCard(); }
 });
 
-/* Reels 式滑動:上滑=下一個,下滑=上一個。
-   卡片背面內容太長可捲動時,先讓它捲,捲到底/頂才觸發換卡。 */
+/* IG Reels 式跟手滑動:卡片跟著手指移動,放手依距離/速度決定甩出或彈回。
+   背面內容可捲動時優先讓它捲,捲到邊界才接手換卡手勢。 */
 (function () {
-  let startX = null, startY = null, startTime = 0;
   const stage = document.querySelector('.card-stage');
+  const sw = document.getElementById('card-swiper');
+  let sx = 0, sy = 0, lastY = 0, lastT = 0, vel = 0;
+  let mode = null; // null=未定, 'swipe'=跟手換卡, 'scroll'=讓背面捲動, 'none'=橫向,忽略
+  let dragging = false;
 
-  function backAtTop() {
+  function backCanScroll(dirUp) {
+    if (!session.flipped) return false;
     const el = document.querySelector('.card-back');
-    return !session.flipped || el.scrollTop < 5;
-  }
-  function backAtBottom() {
-    const el = document.querySelector('.card-back');
-    return !session.flipped || (el.scrollHeight - el.scrollTop - el.clientHeight) < 5;
+    if (el.scrollHeight - el.clientHeight < 5) return false;
+    if (dirUp) return (el.scrollHeight - el.scrollTop - el.clientHeight) > 5;
+    return el.scrollTop > 5;
   }
 
   stage.addEventListener('touchstart', (ev) => {
+    if (swapping) return;
     const t = ev.touches[0];
-    startX = t.clientX; startY = t.clientY; startTime = Date.now();
+    sx = t.clientX; sy = t.clientY; lastY = t.clientY; lastT = Date.now();
+    vel = 0; mode = null; dragging = true;
+    sw.style.transition = 'none';
   }, { passive: true });
 
-  stage.addEventListener('touchend', (ev) => {
-    if (startX === null) return;
-    const t = ev.changedTouches[0];
-    const dx = t.clientX - startX, dy = t.clientY - startY;
-    const fast = (Date.now() - startTime) < 350;
-    startX = null;
-    if (Math.abs(dy) < 60 || Math.abs(dx) > Math.abs(dy)) return; // 不是明確的縱向滑動
-    if (dy < 0) {
-      // 上滑 → 下一個(背面還沒捲到底時,快滑才換卡)
-      if (backAtBottom() || fast) nextCard();
-    } else {
-      // 下滑 → 上一個
-      if (backAtTop() || fast) prevCard();
+  stage.addEventListener('touchmove', (ev) => {
+    if (!dragging || swapping) return;
+    const t = ev.touches[0];
+    const dy = t.clientY - sy, dx = t.clientX - sx;
+    const now = Date.now();
+    vel = (t.clientY - lastY) / Math.max(1, now - lastT);
+    lastY = t.clientY; lastT = now;
+
+    if (mode === null) {
+      if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return; // 還看不出方向
+      if (Math.abs(dx) > Math.abs(dy)) { mode = 'none'; return; }
+      mode = backCanScroll(dy < 0) ? 'scroll' : 'swipe';
     }
+    if (mode !== 'swipe') return;
+    ev.preventDefault();
+    // 邊界阻尼:第一張往下拉、最後一張往上推時有「拉不動」的手感
+    let y = dy;
+    if (session.idx === 0 && dy > 0) y = dy * 0.3;
+    if (session.idx >= session.queue.length - 1 && dy < 0) y = dy * 0.55;
+    sw.style.transform = `translateY(${y}px)`;
+    sw.style.opacity = String(Math.max(0.4, 1 - Math.abs(y) / 600));
+  }, { passive: false });
+
+  stage.addEventListener('touchend', () => {
+    if (!dragging) return;
+    dragging = false;
+    if (mode !== 'swipe') { mode = null; sw.style.transition = ''; return; }
+    mode = null;
+    const dy = lastY - sy;
+    const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
+    if (commit && dy < 0) {
+      if (session.idx < session.queue.length - 1) { finishDrag('up', () => { session.idx++; renderCard(); }); return; }
+      springBack(); finishSession(); return;
+    }
+    if (commit && dy > 0 && session.idx > 0) { finishDrag('down', () => { session.idx--; renderCard(); }); return; }
+    springBack();
   }, { passive: true });
+
+  // 從目前手指位置直接甩出畫面,再從反向滑入 — 不會先跳回原點
+  function finishDrag(dir, apply) {
+    swapping = true;
+    const h = stage.clientHeight || 600;
+    const out = dir === 'up' ? -h : h;
+    sw.style.transition = 'transform .15s cubic-bezier(.3,.7,.5,1),opacity .15s ease';
+    sw.style.transform = `translateY(${out}px)`;
+    sw.style.opacity = '0.1';
+    setTimeout(() => {
+      apply();
+      sw.style.transition = 'none';
+      sw.style.transform = `translateY(${-out * 0.9}px)`;
+      void sw.offsetHeight;
+      sw.style.transition = 'transform .24s cubic-bezier(.17,.84,.35,1),opacity .24s ease';
+      sw.style.transform = ''; sw.style.opacity = '';
+      setTimeout(() => { sw.style.transition = ''; swapping = false; }, 260);
+    }, 150);
+    setTimeout(() => { sw.style.transition = ''; sw.style.transform = ''; sw.style.opacity = ''; swapping = false; }, 800);
+  }
+
+  function springBack() {
+    sw.style.transition = 'transform .3s cubic-bezier(.17,.84,.35,1.15),opacity .3s ease';
+    sw.style.transform = ''; sw.style.opacity = '';
+    setTimeout(() => { sw.style.transition = ''; }, 320);
+  }
 })();
 
 /* ---------- init ---------- */

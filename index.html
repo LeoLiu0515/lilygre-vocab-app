@@ -51,9 +51,6 @@
       <button id="btn-quiz-mode" class="secondary-btn">✏️ 選擇題測驗</button>
       <button id="btn-listen-mode" class="secondary-btn">🎧 聽力模式（免看）</button>
     </div>
-    <div class="mode-row" style="margin-top:10px">
-      <button id="btn-star-mode" class="secondary-btn">⭐ 難字複習（0）</button>
-    </div>
 
     <div class="day-picker">
       <div class="day-picker-label">跳到指定天數</div>
@@ -72,8 +69,6 @@
           <span id="session-progress-pct">0%</span>
         </div>
       </div>
-      <button id="btn-star" class="icon-btn" title="標記難字">☆</button>
-      <button id="btn-speak" class="icon-btn" title="發音">🔊</button>
     </header>
 
     <div class="card-stage">
@@ -85,20 +80,26 @@
           <div class="card-hint">點卡片看解答 · 上滑看下一個</div>
         </div>
         <div class="card-face card-back">
-          <div class="card-word-small" id="card-word-back"></div>
-          <div class="card-root-back" id="card-root-back"></div>
-          <div class="card-hook" id="card-mnemonic"></div>
-          <div class="card-zh" id="card-zh"></div>
-          <div class="card-section" id="card-example-wrap">
-            <div class="card-label">例句</div>
-            <div id="card-example" class="card-example"></div>
-          </div>
-          <div class="card-section" id="card-syn-wrap">
-            <div class="card-label">同義詞</div>
-            <div id="card-syn" class="card-syn"></div>
+          <div class="card-back-inner">
+            <div class="card-word-small" id="card-word-back"></div>
+            <div class="card-root-back" id="card-root-back"></div>
+            <div class="card-hook" id="card-mnemonic"></div>
+            <div class="card-zh" id="card-zh"></div>
+            <div class="card-section" id="card-example-wrap">
+              <div class="card-label">例句</div>
+              <div id="card-example" class="card-example"></div>
+            </div>
+            <div class="card-section" id="card-syn-wrap">
+              <div class="card-label">同義詞</div>
+              <div id="card-syn" class="card-syn"></div>
+            </div>
           </div>
         </div>
       </div>
+      </div>
+      <div class="action-stack">
+        <button id="btn-speak" class="action-btn" title="發音"><span class="action-ico">🔊</span><span class="action-label">發音</span></button>
+        <button id="btn-archive" class="action-btn" title="已會了,永久隱藏"><span class="action-ico">✅</span><span class="action-label">已會</span></button>
       </div>
     </div>
   </section>
@@ -154,6 +155,10 @@
       <div class="stats-grid" id="stats-grid"></div>
       <h3>各天進度</h3>
       <div id="stats-days"></div>
+
+      <h3>已封存的字（已會，永不出現）</h3>
+      <p class="stats-note">背卡時點「✅ 已會」封存。點下面的字可以復原。</p>
+      <div id="archived-list" class="archived-list"></div>
 
       <h3>偏好設定</h3>
       <div class="setting-row">
