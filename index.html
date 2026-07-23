@@ -116,6 +116,7 @@
       <div class="quiz-score">✅ <span id="quiz-score">0</span></div>
     </header>
     <div class="quiz-stage">
+      <div class="quiz-hint" id="quiz-hint"></div>
       <div class="quiz-word" id="quiz-word"></div>
       <div class="quiz-root" id="quiz-root"></div>
       <div class="quiz-options" id="quiz-options"></div>
@@ -172,6 +173,13 @@
         </div>
         <button id="toggle-default-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
       </div>
+      <div class="setting-row">
+        <div class="setting-text">
+          <div class="setting-title">隨機順序</div>
+          <div class="setting-sub">複習輪建議開啟：打亂出卡順序，避免靠「上一張是什麼」的位置記憶</div>
+        </div>
+        <button id="toggle-shuffle" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+      </div>
 
       <h3>跨裝置同步</h3>
       <p class="stats-note" id="sync-status">尚未連接。連接後手機和電腦會自動同步同一份進度。</p>
@@ -200,7 +208,8 @@
         <button id="btn-import" class="secondary-btn">⬆️ 匯入進度</button>
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
-      <button id="btn-reset" class="danger-btn">重置全部進度</button>
+      <button id="btn-reset" class="danger-btn">重置背誦進度（封存的字不受影響）</button>
+      <button id="btn-undo-reset" class="secondary-btn" style="display:none;margin-top:10px;">↩️ 復原上次重置</button>
     </div>
   </section>
 

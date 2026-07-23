@@ -33,7 +33,7 @@ function defaultProgress() {
     lastAdvanceDate: null,
     streak: 0,
     lastStudyDate: null,
-    settings: { defaultFlipped: false },
+    settings: { defaultFlipped: false, shuffleOrder: false },
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -64,7 +64,9 @@ function saveLocalOnly() {
 }
 
 function getState(num) {
-  return PROGRESS.words[num] || { box: 0, due: null, reps: 0, lapses: 0, seen: false };
+  // Object.assign so partial records (e.g. the minimal {archived,seen} entries kept
+  // across a "reset study progress" wipe) always get sane SRS defaults filled in.
+  return Object.assign({ box: 0, due: null, reps: 0, lapses: 0, seen: false }, PROGRESS.words[num] || {});
 }
 function setState(num, st) {
   PROGRESS.words[num] = st;
@@ -338,10 +340,12 @@ function activeDayPool(dayNum) {
 }
 
 function startSession() {
-  // 當天還沒封存的字,依順序;沒學過的排前面,學過的排後面(方便一週一輪)
+  // 當天還沒封存的字;沒學過的排前面,學過的排後面(方便一週一輪)。
+  // 開了「隨機順序」則各組內打亂,打破位置記憶(交錯練習)。
   const pool = activeDayPool(PROGRESS.currentDay);
-  const unseen = pool.filter(e => !isSeen(e.num));
-  const seen = pool.filter(e => isSeen(e.num));
+  let unseen = pool.filter(e => !isSeen(e.num));
+  let seen = pool.filter(e => isSeen(e.num));
+  if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
   session = { queue: unseen.concat(seen), idx: 0, flipped: false };
   if (session.queue.length === 0) {
     alert('這一天的字都封存完了,太強了!換一天,或到統計頁復原已封存的字。');
@@ -483,30 +487,80 @@ function startQuiz() {
   renderQuiz();
 }
 
-function renderQuiz() {
-  const e = quiz.queue[quiz.idx];
-  if (!e) { finishQuiz(); return; }
-  document.getElementById('quiz-word').textContent = e.word;
-  document.getElementById('quiz-root').textContent = e.root || '';
-  document.getElementById('quiz-root').style.display = e.root ? '' : 'none';
+/* 三種題型混出:
+   zh  看英文選中文(辨識)
+   rev 看中文選英文(主動回憶,較難)
+   syn 看英文選同義詞(GRE 句子等價題型) */
+function synTokensOf(entry) {
+  return (entry.synonyms || []).join(',').split(/[,，;；]/)
+    .map(s => s.trim())
+    .filter(s => s && /^[a-zA-Z][a-zA-Z' -]*$/.test(s) && !s.includes('相關'));
+}
 
+function buildQuestion(e) {
+  const types = ['zh'];
+  if ((e.meaning_zh || [])[0]) types.push('rev');
+  if (synTokensOf(e).length) types.push('syn');
+  const type = types[Math.floor(Math.random() * types.length)];
+  const sameRoot = VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num && x.meaning_zh && x.meaning_zh[0]);
+
+  if (type === 'rev') {
+    // 中文 → 選英文字;干擾項優先用同根字(最容易搞混,鑑別度最高)
+    const correct = e.word;
+    let distractors = shuffle(sameRoot).slice(0, 2).map(x => x.word);
+    while (distractors.length < 3) {
+      const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
+      if (r.word !== correct && !distractors.includes(r.word)) distractors.push(r.word);
+    }
+    return { type, hint: '選出對應的單字', prompt: (e.meaning_zh || [])[0], correct, distractors, zhPrompt: true, showRoot: false };
+  }
+  if (type === 'syn') {
+    // 英文 → 選同義詞;干擾項取其他字的同義詞
+    const toks = synTokensOf(e);
+    const correct = toks[Math.floor(Math.random() * toks.length)];
+    const own = new Set(toks.map(t => t.toLowerCase()));
+    const distractors = [];
+    while (distractors.length < 3) {
+      const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
+      if (r.num === e.num) continue;
+      const rt = synTokensOf(r);
+      if (!rt.length) continue;
+      const cand = rt[Math.floor(Math.random() * rt.length)];
+      if (!own.has(cand.toLowerCase()) && !distractors.includes(cand) && cand.toLowerCase() !== e.word.toLowerCase()) distractors.push(cand);
+    }
+    return { type, hint: '選出同義詞', prompt: e.word, correct, distractors, zhPrompt: false, showRoot: false };
+  }
+  // zh:英文 → 選中文
   const correct = (e.meaning_zh && e.meaning_zh[0]) || '（無資料）';
-  let sameRoot = VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num && x.meaning_zh && x.meaning_zh[0]);
   let distractors = shuffle(sameRoot).slice(0, 2).map(x => x.meaning_zh[0]);
   while (distractors.length < 3) {
     const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
     const m = r.meaning_zh && r.meaning_zh[0];
     if (m && m !== correct && !distractors.includes(m)) distractors.push(m);
   }
-  const options = shuffle([correct, ...distractors]);
+  return { type, hint: '選出中文意思', prompt: e.word, correct, distractors, zhPrompt: false, showRoot: true };
+}
 
+function renderQuiz() {
+  const e = quiz.queue[quiz.idx];
+  if (!e) { finishQuiz(); return; }
+  const q = buildQuestion(e);
+  document.getElementById('quiz-hint').textContent = q.hint;
+  const wordEl = document.getElementById('quiz-word');
+  wordEl.textContent = q.prompt;
+  wordEl.classList.toggle('zh-prompt', q.zhPrompt);
+  const rootEl = document.getElementById('quiz-root');
+  rootEl.textContent = e.root || '';
+  rootEl.style.display = (q.showRoot && e.root) ? '' : 'none';
+
+  const options = shuffle([q.correct, ...q.distractors]);
   const wrap = document.getElementById('quiz-options');
   wrap.innerHTML = '';
   options.forEach(opt => {
     const btn = document.createElement('button');
     btn.className = 'quiz-opt';
     btn.textContent = opt;
-    btn.onclick = () => answerQuiz(btn, opt, correct, e);
+    btn.onclick = () => answerQuiz(btn, opt, q.correct, e);
     wrap.appendChild(btn);
   });
 
@@ -625,6 +679,8 @@ function renderStats() {
   }
 
   document.getElementById('toggle-default-flip').setAttribute('aria-checked', String(!!PROGRESS.settings.defaultFlipped));
+  document.getElementById('toggle-shuffle').setAttribute('aria-checked', String(!!PROGRESS.settings.shuffleOrder));
+  document.getElementById('btn-undo-reset').style.display = localStorage.getItem(RESET_BACKUP_KEY) ? '' : 'none';
   renderArchivedList();
   renderSyncUI();
 }
@@ -737,18 +793,52 @@ document.getElementById('btn-import').onclick = () => document.getElementById('i
 document.getElementById('import-file').onchange = (ev) => {
   if (ev.target.files[0]) importProgress(ev.target.files[0]);
 };
+const RESET_BACKUP_KEY = 'lgv_last_reset_backup_v1';
+
 document.getElementById('btn-reset').onclick = () => {
-  if (confirm('確定要重置所有學習進度嗎？此動作無法復原。')) {
-    PROGRESS = defaultProgress();
+  if (confirm('確定要重置背誦進度嗎？\n\n已封存（已會）的字不會受影響，仍然維持封存狀態。\n這個動作會留一份備份，如果按錯了可以在下面「復原上次重置」救回來。')) {
+    // 重置前先留一份完整快照,讓「復原上次重置」有東西可還原
+    localStorage.setItem(RESET_BACKUP_KEY, JSON.stringify(PROGRESS));
+
+    // 只重置 SRS 學習進度(box/due/reps/seen),封存狀態(archived)整包保留
+    const archivedEntries = {};
+    for (const [num, st] of Object.entries(PROGRESS.words || {})) {
+      if (st.archived) archivedEntries[num] = { archived: true, seen: true };
+    }
+    const fresh = defaultProgress();
+    fresh.words = archivedEntries;
+    PROGRESS = fresh;
     saveProgress();
     renderStats();
     renderHome();
   }
 };
 
+document.getElementById('btn-undo-reset').onclick = () => {
+  const raw = localStorage.getItem(RESET_BACKUP_KEY);
+  if (!raw) return;
+  if (confirm('確定要復原成上次重置前的進度嗎？')) {
+    try {
+      PROGRESS = Object.assign(defaultProgress(), JSON.parse(raw));
+      saveProgress();
+      localStorage.removeItem(RESET_BACKUP_KEY);
+      renderStats();
+      renderHome();
+      alert('已復原！');
+    } catch (e) {
+      alert('備份資料損毀，無法復原。');
+    }
+  }
+};
+
 document.getElementById('toggle-default-flip').onclick = (ev) => {
   PROGRESS.settings.defaultFlipped = !PROGRESS.settings.defaultFlipped;
   ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.defaultFlipped));
+  saveProgress();
+};
+document.getElementById('toggle-shuffle').onclick = (ev) => {
+  PROGRESS.settings.shuffleOrder = !PROGRESS.settings.shuffleOrder;
+  ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.shuffleOrder));
   saveProgress();
 };
 
