@@ -219,7 +219,23 @@
 <script src="app.js"></script>
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // 每次開啟/回到前景都主動問一次「有沒有新版」,不要只靠瀏覽器自己的排程
+      reg.update();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+    });
+  });
+  // 新的 service worker 一接管,代表已經有新版本了 —— 直接重新整理一次,
+  // 讓使用者不用自己搞懂快取問題,永遠自動拿到最新版。
+  let refreshedForNewSW = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshedForNewSW) return;
+    refreshedForNewSW = true;
+    window.location.reload();
+  });
 }
 </script>
 </body>
