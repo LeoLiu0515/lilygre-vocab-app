@@ -22,7 +22,6 @@ function defaultProgress() {
   return {
     words: {},          // num -> {box, due, reps, lapses, seen}
     currentDay: 1,
-    lastAdvanceDate: null,
     streak: 0,
     lastStudyDate: null,
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
@@ -53,12 +52,6 @@ function saveProgress(skipSync) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(PROGRESS));
   if (!skipSync) scheduleSyncPush();
 }
-// 純本機記錄(如每日換天),不更新 updatedAt——避免「才剛打開網頁」就讓
-// 本機舊資料看起來比雲端新。
-function saveLocalOnly() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(PROGRESS));
-}
-
 function getState(num) {
   // Object.assign so partial records (e.g. the minimal {archived,seen} entries kept
   // across a "reset study progress" wipe) always get sane SRS defaults filled in.
@@ -109,20 +102,20 @@ function dailyQuota() {
   const n = quotaPool().length;
   return n ? Math.max(1, Math.ceil(n / TOTAL_DAYS)) : 0;
 }
-function resetDailyIfNeeded() {
-  const today = todayStr();
-  if (PROGRESS.dailyDate !== today) {
-    PROGRESS.dailyDate = today;
-    PROGRESS.dailySeen = [];
-    saveLocalOnly();
-  }
+// 這一批的計數「不會」自己跨日歸零 —— 半夜還在背的時候被時鐘清掉很惱人。
+// 只有按首頁的「開始新的一天」才會重來。
+function startNewDay() {
+  PROGRESS.dailyDate = todayStr();
+  PROGRESS.dailySeen = [];
+  PROGRESS.currentDay = (PROGRESS.currentDay % TOTAL_DAYS) + 1;
+  saveProgress();
+  renderHome();
 }
 function dailyDone() {
-  resetDailyIfNeeded();
   return (PROGRESS.dailySeen || []).length;
 }
 function markSeenToday(num) {
-  resetDailyIfNeeded();
+  if (!PROGRESS.dailySeen) PROGRESS.dailySeen = [];
   if (!PROGRESS.dailySeen.includes(num)) {
     PROGRESS.dailySeen.push(num);
     saveProgress();
@@ -262,21 +255,6 @@ async function pullSyncOnLoad() {
   finally { syncPullDone = true; }
 }
 
-function ensureDayAdvance() {
-  const today = todayStr();
-  if (!PROGRESS.lastAdvanceDate) {
-    PROGRESS.lastAdvanceDate = today;
-    saveLocalOnly();
-    return;
-  }
-  if (PROGRESS.lastAdvanceDate !== today) {
-    const diff = Math.max(1, daysBetween(PROGRESS.lastAdvanceDate, today));
-    PROGRESS.currentDay = ((PROGRESS.currentDay - 1 + diff) % TOTAL_DAYS) + 1;
-    PROGRESS.lastAdvanceDate = today;
-    saveLocalOnly();
-  }
-}
-
 function touchStreak() {
   const today = todayStr();
   if (PROGRESS.lastStudyDate === today) return;
@@ -320,8 +298,6 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  ensureDayAdvance();
-  resetDailyIfNeeded();
   document.getElementById('home-day-num').textContent = PROGRESS.currentDay;
   const remaining = quotaPool().length;
   const t = todayStats();
@@ -414,17 +390,26 @@ function renderCard() {
   // 正面:單字 + 一句英文例句(例句原文是中英夾雜,中文那半要切掉才不會洩底)
   const frontEx = englishOnly((e.example || [])[0] || '');
   const frontExEl = document.getElementById('card-front-example');
-  frontExEl.textContent = frontEx;
+  frontExEl.innerHTML = underlineTarget(frontEx, e.word);
   frontExEl.style.display = frontEx ? '' : 'none';
   document.getElementById('card-word-back').textContent = e.word;
   const rootBack = document.getElementById('card-root-back');
-  rootBack.textContent = e.root ? e.root + (e.root_gloss ? '　' + e.root_gloss : '') : '';
+  rootBack.innerHTML = e.root
+    ? '<b>' + escapeHtml(e.root) + '</b>' +
+      (e.root_gloss ? '<span>' + escapeHtml(e.root_gloss) + '</span>' : '')
+    : '';
   rootBack.style.display = e.root ? '' : 'none';
   const hookEl = document.getElementById('card-mnemonic');
   hookEl.textContent = e.mnemonic || '';
   hookEl.style.display = e.mnemonic ? '' : 'none';
   document.getElementById('card-zh').textContent = (e.meaning_zh || []).join('；');
-  document.getElementById('card-example').innerHTML = (e.example || []).map(x => escapeHtml(x)).join('<br><br>');
+  // 例句原文是「英文.中文」黏在一起的,拆成兩行才讀得下去
+  document.getElementById('card-example').innerHTML = (e.example || []).map(x => {
+    const en = englishOnly(x);
+    const zh = x.slice(en.length).replace(/^[\s.,;:]+/, '').trim();
+    return '<span class="ex-en">' + underlineTarget(en, e.word) + '</span>' +
+      (zh ? '<span class="ex-zh">' + escapeHtml(zh) + '</span>' : '');
+  }).join('');
   document.getElementById('card-example-wrap').style.display = (e.example || []).length ? '' : 'none';
   const synTokens = (e.synonyms || []).join(',').split(/[,，]/).map(s => s.trim()).filter(Boolean);
   document.getElementById('card-syn').innerHTML =
@@ -453,6 +438,30 @@ function escapeHtml(s) {
    正面只能給英文,不然翻譯等於先把答案送出去。
    取第一個中日文字元之前的部分;切出來太短(整句是中文開頭之類的特例)
    就退回「把中文字元全部挖掉」。 */
+/* 例句裡的目標字畫底線。句子裡多半是變化形(exacerbate → exacerbates、
+   grandiloquence → grandiloquent、illiteracy → illiterate),所以由嚴到寬試:
+   原形 → 去掉字尾 e/y/d/s → 取前 60% 當字首,後面允許接任何字尾字母。
+   全部抓不到就整句原樣輸出(1738 條裡剩下的都是資料本身拼錯或英美拼法不同)。 */
+function underlineTarget(sentence, word) {
+  if (!sentence) return '';
+  const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const stems = [word];
+  if (/[eyds]$/i.test(word)) stems.push(word.slice(0, -1));
+  const cut = Math.max(4, Math.ceil(word.length * 0.6));
+  if (cut < word.length) stems.push(word.slice(0, cut));
+  for (const stem of stems) {
+    if (stem.length < 3) continue;
+    const re = new RegExp('(^|[^\\p{L}])(' + esc(stem) + "[\\p{L}']*)", 'iu');
+    const m = sentence.match(re);
+    if (!m) continue;
+    const start = m.index + m[1].length;
+    return escapeHtml(sentence.slice(0, start)) +
+      '<u class="ex-target">' + escapeHtml(m[2]) + '</u>' +
+      escapeHtml(sentence.slice(start + m[2].length));
+  }
+  return escapeHtml(sentence);
+}
+
 const CJK_RE = /[一-鿿　-〿＀-￯]/;
 function englishOnly(s) {
   if (!s) return '';
@@ -699,6 +708,11 @@ function importProgress(file) {
 
 /* ---------- wiring ---------- */
 document.getElementById('btn-start-session').onclick = startSession;
+document.getElementById('btn-new-day').onclick = () => {
+  // 只有已經背了才問一聲,免得手滑把今天的進度清掉
+  if (dailyDone() > 0 && !confirm(`今天已經背了 ${dailyDone()} 張。\n\n確定要歸零、開始新的一天嗎？（分類和背過的紀錄都不受影響）`)) return;
+  startNewDay();
+};
 document.getElementById('btn-stats').onclick = () => { renderStats(); showView('view-stats'); };
 document.getElementById('btn-exit-stats').onclick = () => { showView('view-home'); renderHome(); };
 

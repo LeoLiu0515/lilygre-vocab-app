@@ -50,6 +50,7 @@
     <div class="day-picker">
       <div class="day-picker-label">從哪一天開始抽（數字＝還沒看過的）</div>
       <div class="day-dots" id="day-dots"></div>
+      <button id="btn-new-day" class="ghost-btn">↻ 開始新的一天（歸零今日進度）</button>
     </div>
   </section>
 
@@ -76,7 +77,12 @@
         </div>
         <div class="card-face card-back">
           <div class="card-back-inner">
-            <div class="card-word-small" id="card-word-back"></div>
+            <div class="card-word-row">
+              <span class="card-word-small" id="card-word-back"></span>
+              <button id="btn-speak" class="speak-mini" title="發音" aria-label="發音">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.2v13.6L7.2 14.5H4z"/><path d="M15.6 8.8a4.4 4.4 0 0 1 0 6.4M18.2 6.2a8 8 0 0 1 0 11.6"/></svg>
+              </button>
+            </div>
             <div class="card-root-back" id="card-root-back"></div>
             <div class="card-hook" id="card-mnemonic"></div>
             <div class="card-zh" id="card-zh"></div>
@@ -93,7 +99,6 @@
       </div>
       </div>
       <div class="action-stack">
-        <button id="btn-speak" class="action-btn" title="發音"><span class="action-ico">🔊</span><span class="action-label">發音</span></button>
         <button id="btn-impress" class="action-btn" title="有印象,但不確定會不會忘"><span class="action-ico">🤔</span><span class="action-label">有印象</span></button>
         <button id="btn-archive" class="action-btn" title="已經會了"><span class="action-ico">✓</span><span class="action-label">已會</span></button>
       </div>
