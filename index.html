@@ -47,11 +47,6 @@
 
     <button id="btn-start-session" class="cta-btn">開始通勤學習</button>
 
-    <div class="mode-row">
-      <button id="btn-quiz-mode" class="secondary-btn">✏️ 選擇題測驗</button>
-      <button id="btn-listen-mode" class="secondary-btn">🎧 聽力模式（免看）</button>
-    </div>
-
     <div class="day-picker">
       <div class="day-picker-label">跳到指定天數</div>
       <div class="day-dots" id="day-dots"></div>
@@ -75,8 +70,8 @@
       <div id="card-swiper">
       <div id="flashcard" class="flashcard">
         <div class="card-face card-front">
-          <div class="card-root" id="card-root"></div>
           <div class="card-word" id="card-word"></div>
+          <div class="card-front-example" id="card-front-example"></div>
           <div class="card-hint">點卡片看解答 · 上滑看下一個</div>
         </div>
         <div class="card-face card-back">
@@ -93,48 +88,15 @@
               <div class="card-label">同義詞</div>
               <div id="card-syn" class="card-syn"></div>
             </div>
-            <div class="card-section" id="card-family-wrap">
-              <div class="card-label">同根字・一起記</div>
-              <div id="card-family" class="card-family"></div>
-            </div>
           </div>
         </div>
       </div>
       </div>
       <div class="action-stack">
         <button id="btn-speak" class="action-btn" title="發音"><span class="action-ico">🔊</span><span class="action-label">發音</span></button>
-        <button id="btn-archive" class="action-btn" title="已會了,永久隱藏"><span class="action-ico">✓</span><span class="action-label">已會</span></button>
+        <button id="btn-impress" class="action-btn" title="有印象,但不確定會不會忘"><span class="action-ico">🤔</span><span class="action-label">有印象</span></button>
+        <button id="btn-archive" class="action-btn" title="已經會了"><span class="action-ico">✓</span><span class="action-label">已會</span></button>
       </div>
-    </div>
-  </section>
-
-  <!-- QUIZ MODE -->
-  <section id="view-quiz" class="view">
-    <header class="topbar">
-      <button id="btn-exit-quiz" class="icon-btn">✕</button>
-      <div class="session-progress-bar"><div id="quiz-progress-fill"></div></div>
-      <div class="quiz-score">✅ <span id="quiz-score">0</span></div>
-    </header>
-    <div class="quiz-stage">
-      <div class="quiz-hint" id="quiz-hint"></div>
-      <div class="quiz-word" id="quiz-word"></div>
-      <div class="quiz-root" id="quiz-root"></div>
-      <div class="quiz-options" id="quiz-options"></div>
-    </div>
-  </section>
-
-  <!-- LISTEN MODE -->
-  <section id="view-listen" class="view">
-    <header class="topbar">
-      <button id="btn-exit-listen" class="icon-btn">✕</button>
-      <div class="listen-title">聽力模式</div>
-      <button id="btn-listen-toggle" class="icon-btn">⏸</button>
-    </header>
-    <div class="listen-stage">
-      <div class="listen-word" id="listen-word"></div>
-      <div class="listen-zh" id="listen-zh"></div>
-      <div class="listen-mnemonic" id="listen-mnemonic"></div>
-      <div class="listen-progress" id="listen-progress"></div>
     </div>
   </section>
 
@@ -161,9 +123,40 @@
       <h3>各天進度</h3>
       <div id="stats-days"></div>
 
-      <h3>已封存的字（已會，永不出現）</h3>
-      <p class="stats-note">背卡時點「✅ 已會」封存。點下面的字可以復原。</p>
-      <div id="archived-list" class="archived-list"></div>
+      <h3>單字卡要出現哪幾類</h3>
+      <p class="stats-note">關掉的那一類背卡時不會出現，進度條的分母也只算開著的字。隨時可以再打開，分類不會消失。</p>
+      <div class="setting-row">
+        <div class="setting-text">
+          <div class="setting-title">還沒背 <span class="tier-count" id="count-new">0</span></div>
+          <div class="setting-sub">完全還沒記起來的字</div>
+        </div>
+        <button id="toggle-show-new" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text">
+          <div class="setting-title">🤔 有印象 <span class="tier-count" id="count-impress">0</span></div>
+          <div class="setting-sub">短期記得，但不確定會不會忘</div>
+        </div>
+        <button id="toggle-show-impress" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text">
+          <div class="setting-title">✓ 已會 <span class="tier-count" id="count-known">0</span></div>
+          <div class="setting-sub">已經穩了，平常不用再看</div>
+        </div>
+        <button id="toggle-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+      </div>
+
+      <h3>單字搜尋・改分類</h3>
+      <p class="stats-note">打單字、中文意思或字根都可以找。點右邊的標籤改分類。</p>
+      <input type="search" id="word-search" class="sync-input" placeholder="搜尋單字 / 中文 / 字根" style="width:100%;margin:10px 0 12px;">
+      <div class="tier-filter" id="tier-filter">
+        <button class="tier-chip active" data-tier="all">全部</button>
+        <button class="tier-chip" data-tier="3">還沒背</button>
+        <button class="tier-chip" data-tier="2">🤔 有印象</button>
+        <button class="tier-chip" data-tier="1">✓ 已會</button>
+      </div>
+      <div id="search-list" class="archived-list"></div>
 
       <h3>偏好設定</h3>
       <div class="setting-row">
@@ -208,7 +201,7 @@
         <button id="btn-import" class="secondary-btn">⬆️ 匯入進度</button>
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
-      <button id="btn-reset" class="danger-btn">重置背誦進度（封存的字不受影響）</button>
+      <button id="btn-reset" class="danger-btn">重置背誦進度（已會／有印象的分類不受影響）</button>
       <button id="btn-undo-reset" class="secondary-btn" style="display:none;margin-top:10px;">↩️ 復原上次重置</button>
     </div>
   </section>

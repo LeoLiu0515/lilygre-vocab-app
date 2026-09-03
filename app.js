@@ -1,8 +1,6 @@
 /* ---------- storage & state ---------- */
 const STORAGE_KEY = 'lgv_progress_v2';
-const INTERVALS = [0, 1, 2, 4, 7, 14, 30, 60, 120]; // days, indexed by box
 const TOTAL_DAYS = 7;
-const SESSION_SIZE = 25;
 
 const byDay = {};
 for (const e of VOCAB_DATA) {
@@ -20,12 +18,6 @@ function daysBetween(a, b) {
   const db = new Date(b + 'T00:00:00');
   return Math.round((db - da) / 86400000);
 }
-function addDays(dateStr, n) {
-  const d = new Date(dateStr + 'T00:00:00');
-  d.setDate(d.getDate() + n);
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-}
-
 function defaultProgress() {
   return {
     words: {},          // num -> {box, due, reps, lapses, seen}
@@ -33,7 +25,9 @@ function defaultProgress() {
     lastAdvanceDate: null,
     streak: 0,
     lastStudyDate: null,
-    settings: { defaultFlipped: false, shuffleOrder: false },
+    // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
+    // 預設「已會」關著,跟舊版「封存的字永不出現」行為一致。
+    settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -71,6 +65,35 @@ function getState(num) {
 function setState(num, st) {
   PROGRESS.words[num] = st;
 }
+
+/* ---------- 三分類 ----------
+   1 已會   = 舊的 archived 旗標(絕對不動,舊資料直接就是第一類)
+   2 有印象 = 短期記得,但不確定會不會忘
+   3 還沒背 = 其餘全部(預設)                                        */
+const TIER_KNOWN = 1, TIER_IMPRESS = 2, TIER_NEW = 3;
+const TIER_LABEL = { 1: '✓ 已會', 2: '🤔 有印象', 3: '還沒背' };
+
+function tierOf(num) {
+  const st = getState(num);
+  if (st.archived) return TIER_KNOWN;
+  if (st.impress) return TIER_IMPRESS;
+  return TIER_NEW;
+}
+function setTier(num, tier) {
+  const st = getState(num);
+  st.archived = tier === TIER_KNOWN;
+  st.impress = tier === TIER_IMPRESS;
+  if (tier !== TIER_NEW) st.seen = true;
+  setState(num, st);
+  saveProgress();
+}
+function tierVisible(tier) {
+  const s = PROGRESS.settings;
+  if (tier === TIER_KNOWN) return !!s.showKnown;
+  if (tier === TIER_IMPRESS) return !!s.showImpress;
+  return !!s.showNew;
+}
+function isVisible(num) { return tierVisible(tierOf(num)); }
 
 /* ---------- cross-device sync (GitHub Gist as backend) ---------- */
 const SYNC_KEY = 'lgv_sync_v1';
@@ -147,9 +170,11 @@ function mergeProgress(local, remote) {
     // 兩邊都有:取複習次數多的;平手取 box 高的(較熟)
     const chosen = (b.reps || 0) > (a.reps || 0) ||
       ((b.reps || 0) === (a.reps || 0) && (b.box || 0) > (a.box || 0)) ? b : a;
-    // 難字標記與封存狀態兩邊取聯集,任何一邊操作過都保留
+    // 難字標記與分類兩邊取聯集,任何一邊操作過都保留。
+    // 「已會」勝過「有印象」,免得同一個字兩邊標了不同類。
     chosen.star = !!(a.star || b.star);
     chosen.archived = !!(a.archived || b.archived);
+    chosen.impress = !chosen.archived && !!(a.impress || b.impress);
     out.words[n] = chosen;
   }
   out.streak = Math.max(local.streak || 0, remote.streak || 0);
@@ -227,22 +252,14 @@ function touchStreak() {
 
 /* ---------- queues ---------- */
 function isSeen(num) { return !!getState(num).seen; }
-function isDue(num) {
-  const st = getState(num);
-  if (!st.seen) return false;
-  return st.due <= todayStr();
-}
-
-function dueList(pool) {
-  return pool.filter(e => isDue(e.num));
-}
 function newList(pool) {
   return pool.filter(e => !isSeen(e.num));
 }
 
+// 分母 = 目前 toggle 開著的那幾類在這一天有幾張;分子 = 其中已經看過的。
+// 關掉一類,進度條就跟著只算剩下的字。
 function dayStats(dayNum) {
-  // 已封存的字視為「不存在」:不列入總數也不列入待學
-  const pool = (byDay[dayNum] || []).filter(e => !isArchived(e.num));
+  const pool = activeDayPool(dayNum);
   const seenCount = pool.filter(e => isSeen(e.num)).length;
   return { total: pool.length, seen: seenCount, pct: pool.length ? Math.round(seenCount / pool.length * 100) : 0 };
 }
@@ -254,43 +271,6 @@ function shuffle(arr) {
     [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
-}
-
-function buildCommuteQueue() {
-  const currentPool = byDay[PROGRESS.currentDay] || [];
-  const due = dueList(VOCAB_DATA);
-  const fresh = newList(currentPool);
-  let queue = shuffle(due).slice(0, 20).concat(fresh.slice(0, SESSION_SIZE));
-  if (queue.length === 0) {
-    // everything caught up -- offer ahead-of-schedule words from the next unfinished day
-    for (let i = 0; i < TOTAL_DAYS; i++) {
-      const d = ((PROGRESS.currentDay - 1 + i) % TOTAL_DAYS) + 1;
-      const f = newList(byDay[d] || []);
-      if (f.length) { queue = f.slice(0, SESSION_SIZE); break; }
-    }
-  }
-  return shuffle(queue).slice(0, SESSION_SIZE);
-}
-
-/* ---------- rating / SRS ---------- */
-function rateWord(num, rating) {
-  const st = getState(num);
-  st.seen = true;
-  st.reps = (st.reps || 0) + 1;
-  if (rating === 'again') {
-    st.box = 0;
-    st.lapses = (st.lapses || 0) + 1;
-  } else if (rating === 'hard') {
-    st.box = Math.max(1, st.box);
-  } else if (rating === 'good') {
-    st.box = Math.min(INTERVALS.length - 1, st.box + 1);
-  } else if (rating === 'easy') {
-    st.box = Math.min(INTERVALS.length - 1, st.box + 2);
-  }
-  st.due = addDays(todayStr(), INTERVALS[st.box]);
-  setState(num, st);
-  saveProgress();
-  touchStreak();
 }
 
 /* ---------- view management ---------- */
@@ -315,7 +295,7 @@ function renderHome() {
   document.getElementById('ring-pct').textContent = pct + '%';
 
   document.getElementById('stat-due').textContent = st.seen;
-  document.getElementById('stat-new').textContent = newList(pool).length;
+  document.getElementById('stat-new').textContent = Math.max(0, st.total - st.seen);
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
 
@@ -335,12 +315,13 @@ function renderHome() {
 let session = { queue: [], idx: 0, flipped: false };
 
 function isArchived(num) { return !!getState(num).archived; }
+// 只留下「目前 toggle 有開的分類」的字
 function activeDayPool(dayNum) {
-  return (byDay[dayNum] || []).filter(e => !isArchived(e.num));
+  return (byDay[dayNum] || []).filter(e => isVisible(e.num));
 }
 
 function startSession() {
-  // 當天還沒封存的字;沒學過的排前面,學過的排後面(方便一週一輪)。
+  // 當天有開的分類;沒學過的排前面,學過的排後面(方便一週一輪)。
   // 開了「隨機順序」則各組內打亂,打破位置記憶(交錯練習)。
   const pool = activeDayPool(PROGRESS.currentDay);
   let unseen = pool.filter(e => !isSeen(e.num));
@@ -348,7 +329,7 @@ function startSession() {
   if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
   session = { queue: unseen.concat(seen), idx: 0, flipped: false };
   if (session.queue.length === 0) {
-    alert('這一天的字都封存完了,太強了!換一天,或到統計頁復原已封存的字。');
+    alert('這一天沒有字可以背了。\n\n可能是都標成「已會」了,或是分類 toggle 全關著 —— 到統計頁看看。');
     return;
   }
   touchStreak();
@@ -365,9 +346,12 @@ function renderCard() {
   session.flipped = !!PROGRESS.settings.defaultFlipped;
   card.classList.toggle('flipped', session.flipped);
 
-  document.getElementById('card-root').textContent = e.root || '';
-  document.getElementById('card-root').style.display = e.root ? '' : 'none';
   document.getElementById('card-word').textContent = e.word;
+  // 正面:單字 + 一句英文例句(例句原文是中英夾雜,中文那半要切掉才不會洩底)
+  const frontEx = englishOnly((e.example || [])[0] || '');
+  const frontExEl = document.getElementById('card-front-example');
+  frontExEl.textContent = frontEx;
+  frontExEl.style.display = frontEx ? '' : 'none';
   document.getElementById('card-word-back').textContent = e.word;
   const rootBack = document.getElementById('card-root-back');
   rootBack.textContent = e.root ? e.root + (e.root_gloss ? '　' + e.root_gloss : '') : '';
@@ -383,16 +367,13 @@ function renderCard() {
     synTokens.map(s => '<span class="syn-chip">' + escapeHtml(s) + '</span>').join('');
   document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
-  // 同根字家族:同一字根的其他字,一起記(字根法核心)
-  const family = e.root ? VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num).slice(0, 8) : [];
-  document.getElementById('card-family').innerHTML = family.map(x =>
-    '<span class="fam-chip"><b>' + escapeHtml(x.word) + '</b> ' +
-    escapeHtml(((x.meaning_zh || [])[0] || '').split(/[；;，,]/)[0]) + '</span>'
-  ).join('');
-  document.getElementById('card-family-wrap').style.display = family.length ? '' : 'none';
-
+  syncActionButtons();
   exposeWord(e.num); // 看過即標記,更新進度
-  // 進度條顯示「當天累積進度」(排除已封存),退出再進來會接續
+  renderCardProgress();
+}
+
+// 進度條顯示「當天累積進度」(只算目前開著的分類),退出再進來會接續
+function renderCardProgress() {
   const st = dayStats(PROGRESS.currentDay);
   const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
   document.getElementById('session-progress-fill').style.width = pct + '%';
@@ -402,6 +383,21 @@ function renderCard() {
 
 function escapeHtml(s) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+/* example 欄位是「English sentence. 中文翻譯。」黏在同一個字串裡。
+   正面只能給英文,不然翻譯等於先把答案送出去。
+   取第一個中日文字元之前的部分;切出來太短(整句是中文開頭之類的特例)
+   就退回「把中文字元全部挖掉」。 */
+const CJK_RE = /[一-鿿　-〿＀-￯]/;
+function englishOnly(s) {
+  if (!s) return '';
+  const i = s.search(CJK_RE);
+  let en = (i === -1 ? s : s.slice(0, i)).trim();
+  if (en.length < 12) {
+    en = s.replace(new RegExp(CJK_RE.source, 'g'), ' ').replace(/\s+/g, ' ').trim();
+  }
+  return en;
 }
 
 function flipCard() {
@@ -448,189 +444,47 @@ function prevCard() {
   flySwap('down', () => { session.idx--; renderCard(); });
 }
 
-function archiveCurrent() {
+// 兩顆分類按鈕會亮起來表示這張卡目前是哪一類,按第二次可以取消(按錯救得回來)
+function syncActionButtons() {
+  const e = currentEntry();
+  const t = e ? tierOf(e.num) : TIER_NEW;
+  document.getElementById('btn-impress').classList.toggle('on', t === TIER_IMPRESS);
+  document.getElementById('btn-archive').classList.toggle('on', t === TIER_KNOWN);
+}
+
+function markCurrent(tier) {
+  // 過場動畫還在跑的時候別接受第二次點擊,不然會標到已經換掉的那張卡
+  if (swapping) return;
   const e = currentEntry();
   if (!e) return;
-  const st = getState(e.num);
-  st.archived = true;
-  st.seen = true;
-  setState(e.num, st);
-  saveProgress();
-  session.queue.splice(session.idx, 1);
-  if (session.queue.length === 0) { finishSession(); return; }
-  if (session.idx >= session.queue.length) session.idx = session.queue.length - 1;
-  flySwap('up', () => renderCard());
+  // 再按一次同一顆 = 退回「還沒背」
+  const next = tierOf(e.num) === tier ? TIER_NEW : tier;
+  setTier(e.num, next);
+  // 標成一個現在關著的分類,這張卡就當場從這回合抽掉;否則留著,直接換下一張
+  if (!tierVisible(next)) {
+    session.queue.splice(session.idx, 1);
+    if (session.queue.length === 0) { finishSession(); return; }
+    if (session.idx >= session.queue.length) session.idx = session.queue.length - 1;
+    flySwap('up', () => renderCard());
+    return;
+  }
+  syncActionButtons();
+  renderCardProgress();
+  if (next !== TIER_NEW) nextCard();
 }
 
 function finishSession() {
   const st = dayStats(PROGRESS.currentDay);
-  const archived = VOCAB_DATA.filter(e => isArchived(e.num)).length;
+  const known = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_KNOWN).length;
+  const impress = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_IMPRESS).length;
   document.getElementById('done-stats').innerHTML =
-    `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已學過 <b>${st.seen}/${st.total}</b> 字` +
-    (archived ? `<br>已封存 <b>${archived}</b> 個已會的字` : '');
+    `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已看過 <b>${st.seen}/${st.total}</b> 字` +
+    `<br>✓ 已會 <b>${known}</b> ・ 🤔 有印象 <b>${impress}</b>`;
   document.getElementById('btn-done-next').style.display = 'none';
   showView('view-done');
 }
 
-/* ---------- QUIZ MODE ---------- */
-let quiz = { queue: [], idx: 0, score: 0 };
-
-function startQuiz() {
-  const pool = activeDayPool(PROGRESS.currentDay);
-  quiz = { queue: shuffle(pool).slice(0, 15), idx: 0, score: 0 };
-  if (quiz.queue.length < 4) {
-    alert('這天的單字量不足以出選擇題，換一天試試。');
-    return;
-  }
-  showView('view-quiz');
-  document.getElementById('quiz-score').textContent = '0';
-  renderQuiz();
-}
-
-/* 三種題型混出:
-   zh  看英文選中文(辨識)
-   rev 看中文選英文(主動回憶,較難)
-   syn 看英文選同義詞(GRE 句子等價題型) */
-function synTokensOf(entry) {
-  return (entry.synonyms || []).join(',').split(/[,，;；]/)
-    .map(s => s.trim())
-    .filter(s => s && /^[a-zA-Z][a-zA-Z' -]*$/.test(s) && !s.includes('相關'));
-}
-
-function buildQuestion(e) {
-  const types = ['zh'];
-  if ((e.meaning_zh || [])[0]) types.push('rev');
-  if (synTokensOf(e).length) types.push('syn');
-  const type = types[Math.floor(Math.random() * types.length)];
-  const sameRoot = VOCAB_DATA.filter(x => x.root === e.root && x.num !== e.num && x.meaning_zh && x.meaning_zh[0]);
-
-  if (type === 'rev') {
-    // 中文 → 選英文字;干擾項優先用同根字(最容易搞混,鑑別度最高)
-    const correct = e.word;
-    let distractors = shuffle(sameRoot).slice(0, 2).map(x => x.word);
-    while (distractors.length < 3) {
-      const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
-      if (r.word !== correct && !distractors.includes(r.word)) distractors.push(r.word);
-    }
-    return { type, hint: '選出對應的單字', prompt: (e.meaning_zh || [])[0], correct, distractors, zhPrompt: true, showRoot: false };
-  }
-  if (type === 'syn') {
-    // 英文 → 選同義詞;干擾項取其他字的同義詞
-    const toks = synTokensOf(e);
-    const correct = toks[Math.floor(Math.random() * toks.length)];
-    const own = new Set(toks.map(t => t.toLowerCase()));
-    const distractors = [];
-    while (distractors.length < 3) {
-      const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
-      if (r.num === e.num) continue;
-      const rt = synTokensOf(r);
-      if (!rt.length) continue;
-      const cand = rt[Math.floor(Math.random() * rt.length)];
-      if (!own.has(cand.toLowerCase()) && !distractors.includes(cand) && cand.toLowerCase() !== e.word.toLowerCase()) distractors.push(cand);
-    }
-    return { type, hint: '選出同義詞', prompt: e.word, correct, distractors, zhPrompt: false, showRoot: false };
-  }
-  // zh:英文 → 選中文
-  const correct = (e.meaning_zh && e.meaning_zh[0]) || '（無資料）';
-  let distractors = shuffle(sameRoot).slice(0, 2).map(x => x.meaning_zh[0]);
-  while (distractors.length < 3) {
-    const r = VOCAB_DATA[Math.floor(Math.random() * VOCAB_DATA.length)];
-    const m = r.meaning_zh && r.meaning_zh[0];
-    if (m && m !== correct && !distractors.includes(m)) distractors.push(m);
-  }
-  return { type, hint: '選出中文意思', prompt: e.word, correct, distractors, zhPrompt: false, showRoot: true };
-}
-
-function renderQuiz() {
-  const e = quiz.queue[quiz.idx];
-  if (!e) { finishQuiz(); return; }
-  const q = buildQuestion(e);
-  document.getElementById('quiz-hint').textContent = q.hint;
-  const wordEl = document.getElementById('quiz-word');
-  wordEl.textContent = q.prompt;
-  wordEl.classList.toggle('zh-prompt', q.zhPrompt);
-  const rootEl = document.getElementById('quiz-root');
-  rootEl.textContent = e.root || '';
-  rootEl.style.display = (q.showRoot && e.root) ? '' : 'none';
-
-  const options = shuffle([q.correct, ...q.distractors]);
-  const wrap = document.getElementById('quiz-options');
-  wrap.innerHTML = '';
-  options.forEach(opt => {
-    const btn = document.createElement('button');
-    btn.className = 'quiz-opt';
-    btn.textContent = opt;
-    btn.onclick = () => answerQuiz(btn, opt, q.correct, e);
-    wrap.appendChild(btn);
-  });
-
-  document.getElementById('quiz-progress-fill').style.width = (quiz.idx / quiz.queue.length * 100) + '%';
-}
-
-function answerQuiz(btn, opt, correct, entry) {
-  document.querySelectorAll('.quiz-opt').forEach(b => {
-    b.onclick = null;
-    if (b.textContent === correct) b.classList.add('correct');
-  });
-  const isRight = opt === correct;
-  if (!isRight) btn.classList.add('wrong');
-  else quiz.score++;
-  document.getElementById('quiz-score').textContent = quiz.score;
-  rateWord(entry.num, isRight ? 'good' : 'again');
-  setTimeout(() => { quiz.idx++; renderQuiz(); }, 900);
-}
-
-function finishQuiz() {
-  document.getElementById('done-stats').innerHTML = `選擇題結果：${quiz.score} / ${quiz.queue.length} 答對`;
-  showView('view-done');
-}
-
-/* ---------- LISTEN MODE ---------- */
-let listen = { queue: [], idx: 0, playing: false };
-
-function startListen() {
-  const pool = activeDayPool(PROGRESS.currentDay);
-  listen.queue = shuffle(pool.filter(e => !isSeen(e.num))).slice(0, 40);
-  if (listen.queue.length === 0) listen.queue = shuffle(pool).slice(0, 40);
-  listen.idx = 0;
-  listen.playing = true;
-  document.getElementById('btn-listen-toggle').textContent = '⏸';
-  showView('view-listen');
-  touchStreak();
-  speakCurrent();
-}
-
-function speakCurrent() {
-  if (!listen.playing) return;
-  const e = listen.queue[listen.idx];
-  if (!e) { showView('view-home'); renderHome(); return; }
-  document.getElementById('listen-word').textContent = e.word;
-  document.getElementById('listen-zh').textContent = (e.meaning_zh || []).join('；');
-  document.getElementById('listen-mnemonic').textContent = e.mnemonic || '';
-  document.getElementById('listen-progress').textContent = `${listen.idx + 1} / ${listen.queue.length}`;
-
-  if (!('speechSynthesis' in window)) {
-    setTimeout(() => { listen.idx++; speakCurrent(); }, 2500);
-    return;
-  }
-  window.speechSynthesis.cancel();
-  const u1 = new SpeechSynthesisUtterance(e.word);
-  u1.lang = 'en-US';
-  u1.rate = 0.85;
-  const zh = (e.meaning_zh || []).join('，');
-  u1.onend = () => {
-    if (!listen.playing) return;
-    if (!zh) { advanceListen(); return; }
-    const u2 = new SpeechSynthesisUtterance(zh);
-    u2.lang = 'zh-TW';
-    u2.rate = 1;
-    u2.onend = advanceListen;
-    window.speechSynthesis.speak(u2);
-  };
-  window.speechSynthesis.speak(u1);
-  exposeWord(e.num);
-}
-
+/* ---------- 看過即標記 ---------- */
 function exposeWord(num) {
   const st = getState(num);
   if (!st.seen) {
@@ -640,22 +494,6 @@ function exposeWord(num) {
     setState(num, st);
     saveProgress();
   }
-}
-
-function advanceListen() {
-  if (!listen.playing) return;
-  setTimeout(() => {
-    if (!listen.playing) return;
-    listen.idx++;
-    speakCurrent();
-  }, 500);
-}
-
-function toggleListen() {
-  listen.playing = !listen.playing;
-  document.getElementById('btn-listen-toggle').textContent = listen.playing ? '⏸' : '▶';
-  if (listen.playing) speakCurrent();
-  else window.speechSynthesis.cancel();
 }
 
 /* ---------- STATS VIEW ---------- */
@@ -678,35 +516,72 @@ function renderStats() {
     daysEl.appendChild(row);
   }
 
+  const counts = { 1: 0, 2: 0, 3: 0 };
+  for (const e of VOCAB_DATA) counts[tierOf(e.num)]++;
+  document.getElementById('count-new').textContent = counts[TIER_NEW];
+  document.getElementById('count-impress').textContent = counts[TIER_IMPRESS];
+  document.getElementById('count-known').textContent = counts[TIER_KNOWN];
+  document.getElementById('toggle-show-new').setAttribute('aria-checked', String(!!PROGRESS.settings.showNew));
+  document.getElementById('toggle-show-impress').setAttribute('aria-checked', String(!!PROGRESS.settings.showImpress));
+  document.getElementById('toggle-show-known').setAttribute('aria-checked', String(!!PROGRESS.settings.showKnown));
+
   document.getElementById('toggle-default-flip').setAttribute('aria-checked', String(!!PROGRESS.settings.defaultFlipped));
   document.getElementById('toggle-shuffle').setAttribute('aria-checked', String(!!PROGRESS.settings.shuffleOrder));
   document.getElementById('btn-undo-reset').style.display = localStorage.getItem(RESET_BACKUP_KEY) ? '' : 'none';
-  renderArchivedList();
+  renderSearchList();
   renderSyncUI();
 }
 
-function renderArchivedList() {
-  const wrap = document.getElementById('archived-list');
-  const archived = VOCAB_DATA.filter(e => isArchived(e.num));
-  wrap.innerHTML = '';
-  if (archived.length === 0) {
-    wrap.innerHTML = '<div class="archived-empty">還沒有封存任何字。</div>';
+/* ---------- 單字搜尋 / 分類管理 ---------- */
+let searchFilter = 'all';
+const SEARCH_LIMIT = 60;
+
+function renderSearchList() {
+  const wrap = document.getElementById('search-list');
+  const q = document.getElementById('word-search').value.trim().toLowerCase();
+  let hits = VOCAB_DATA;
+  if (searchFilter !== 'all') hits = hits.filter(e => tierOf(e.num) === Number(searchFilter));
+  if (q) {
+    hits = hits.filter(e =>
+      e.word.toLowerCase().includes(q) ||
+      (e.root || '').toLowerCase().includes(q) ||
+      (e.meaning_zh || []).join('；').includes(q));
+  } else if (searchFilter === 'all') {
+    // 沒打字又沒選分類就別把 1738 個字全倒出來
+    wrap.innerHTML = '<div class="archived-empty">打字搜尋，或點上面的分類看清單。</div>';
     return;
   }
-  for (const e of archived) {
+
+  wrap.innerHTML = '';
+  if (hits.length === 0) {
+    wrap.innerHTML = '<div class="archived-empty">找不到符合的字。</div>';
+    return;
+  }
+  for (const e of hits.slice(0, SEARCH_LIMIT)) {
+    const t = tierOf(e.num);
     const row = document.createElement('div');
-    row.className = 'archived-row';
-    row.innerHTML = `<span class="aw">${e.word}</span><span class="az">${(e.meaning_zh || []).join('；')}</span><span class="ar">復原</span>`;
-    row.onclick = () => {
-      const st = getState(e.num);
-      st.archived = false;
-      setState(e.num, st);
-      saveProgress();
-      renderStats();
-      renderHome();
-      showView('view-stats');
-    };
+    row.className = 'search-row';
+    row.innerHTML =
+      `<div class="sr-main"><span class="aw">${escapeHtml(e.word)}</span>` +
+      `<span class="az">${escapeHtml((e.meaning_zh || []).join('；'))}</span></div>` +
+      `<div class="sr-tiers">` +
+      [TIER_NEW, TIER_IMPRESS, TIER_KNOWN].map(v =>
+        `<button class="tier-btn${v === t ? ' on' : ''}" data-tier="${v}">${TIER_LABEL[v]}</button>`).join('') +
+      `</div>`;
+    row.querySelectorAll('.tier-btn').forEach(btn => {
+      btn.onclick = () => {
+        setTier(e.num, Number(btn.dataset.tier));
+        renderStats();
+        renderHome();
+      };
+    });
     wrap.appendChild(row);
+  }
+  if (hits.length > SEARCH_LIMIT) {
+    const more = document.createElement('div');
+    more.className = 'archived-empty';
+    more.textContent = `共 ${hits.length} 筆，先顯示前 ${SEARCH_LIMIT} 筆 —— 再打幾個字縮小範圍。`;
+    wrap.appendChild(more);
   }
 }
 
@@ -755,8 +630,6 @@ function importProgress(file) {
 
 /* ---------- wiring ---------- */
 document.getElementById('btn-start-session').onclick = startSession;
-document.getElementById('btn-quiz-mode').onclick = startQuiz;
-document.getElementById('btn-listen-mode').onclick = startListen;
 document.getElementById('btn-stats').onclick = () => { renderStats(); showView('view-stats'); };
 document.getElementById('btn-exit-stats').onclick = () => { showView('view-home'); renderHome(); };
 
@@ -765,9 +638,13 @@ document.getElementById('btn-exit-session').onclick = () => {
   showView('view-home'); renderHome();
 };
 document.getElementById('flashcard').onclick = flipCard;
+document.getElementById('btn-impress').onclick = (ev) => {
+  ev.stopPropagation();
+  markCurrent(TIER_IMPRESS);
+};
 document.getElementById('btn-archive').onclick = (ev) => {
   ev.stopPropagation();
-  archiveCurrent();
+  markCurrent(TIER_KNOWN);
 };
 document.getElementById('btn-speak').onclick = (ev) => {
   ev.stopPropagation();
@@ -779,13 +656,6 @@ document.getElementById('btn-speak').onclick = (ev) => {
   window.speechSynthesis.speak(u);
 };
 
-document.getElementById('btn-exit-quiz').onclick = () => { showView('view-home'); renderHome(); };
-document.getElementById('btn-exit-listen').onclick = () => {
-  listen.playing = false;
-  window.speechSynthesis && window.speechSynthesis.cancel();
-  showView('view-home'); renderHome();
-};
-document.getElementById('btn-listen-toggle').onclick = toggleListen;
 document.getElementById('btn-done-home').onclick = () => { showView('view-home'); renderHome(); };
 
 document.getElementById('btn-export').onclick = exportProgress;
@@ -796,17 +666,19 @@ document.getElementById('import-file').onchange = (ev) => {
 const RESET_BACKUP_KEY = 'lgv_last_reset_backup_v1';
 
 document.getElementById('btn-reset').onclick = () => {
-  if (confirm('確定要重置背誦進度嗎？\n\n已封存（已會）的字不會受影響，仍然維持封存狀態。\n這個動作會留一份備份，如果按錯了可以在下面「復原上次重置」救回來。')) {
+  if (confirm('確定要重置背誦進度嗎？\n\n「✓ 已會」和「🤔 有印象」的分類完全不會受影響。\n這個動作會留一份備份，如果按錯了可以在下面「復原上次重置」救回來。')) {
     // 重置前先留一份完整快照,讓「復原上次重置」有東西可還原
     localStorage.setItem(RESET_BACKUP_KEY, JSON.stringify(PROGRESS));
 
-    // 只重置 SRS 學習進度(box/due/reps/seen),封存狀態(archived)整包保留
-    const archivedEntries = {};
+    // 只重置學習進度(box/due/reps/seen),分類(archived / impress)整包保留
+    const keptTiers = {};
     for (const [num, st] of Object.entries(PROGRESS.words || {})) {
-      if (st.archived) archivedEntries[num] = { archived: true, seen: true };
+      if (st.archived) keptTiers[num] = { archived: true, seen: true };
+      else if (st.impress) keptTiers[num] = { impress: true, seen: true };
     }
     const fresh = defaultProgress();
-    fresh.words = archivedEntries;
+    fresh.settings = Object.assign(fresh.settings, PROGRESS.settings || {});
+    fresh.words = keptTiers;
     PROGRESS = fresh;
     saveProgress();
     renderStats();
@@ -841,6 +713,26 @@ document.getElementById('toggle-shuffle').onclick = (ev) => {
   ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.shuffleOrder));
   saveProgress();
 };
+
+// 三個分類 toggle:只改「要不要出現」,不動任何一個字的分類本身
+for (const [id, key] of [['toggle-show-new', 'showNew'], ['toggle-show-impress', 'showImpress'], ['toggle-show-known', 'showKnown']]) {
+  document.getElementById(id).onclick = (ev) => {
+    PROGRESS.settings[key] = !PROGRESS.settings[key];
+    ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings[key]));
+    saveProgress();
+    renderStats();
+    renderHome();
+  };
+}
+
+document.getElementById('word-search').oninput = renderSearchList;
+document.querySelectorAll('#tier-filter .tier-chip').forEach(chip => {
+  chip.onclick = () => {
+    searchFilter = chip.dataset.tier;
+    document.querySelectorAll('#tier-filter .tier-chip').forEach(c => c.classList.toggle('active', c === chip));
+    renderSearchList();
+  };
+});
 
 document.getElementById('btn-sync-connect').onclick = async () => {
   const btn = document.getElementById('btn-sync-connect');
