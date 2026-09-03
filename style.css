@@ -92,10 +92,12 @@ html,body{
 .day-dots{display:flex;gap:9px;}
 .day-dot{
   flex:1;aspect-ratio:1;max-width:52px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
   background:none;border:1px solid var(--hairline);
-  font-family:var(--serif);font-weight:700;font-size:14px;cursor:pointer;color:var(--ink-dim);
+  cursor:pointer;color:var(--ink-dim);
 }
+.day-dot b{font-family:var(--serif);font-weight:700;font-size:13px;line-height:1;}
+.day-dot i{font-style:normal;font-size:9.5px;opacity:.7;font-variant-numeric:tabular-nums;}
 .day-dot.current{border-color:var(--gold);color:var(--gold);background:var(--gold-soft);}
 .day-dot.done{color:var(--sage);border-color:rgba(143,214,168,.4);}
 

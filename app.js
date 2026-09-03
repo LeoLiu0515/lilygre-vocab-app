@@ -28,6 +28,8 @@ function defaultProgress() {
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
     // 預設「已會」關著,跟舊版「封存的字永不出現」行為一致。
     settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
+    dailyDate: null,     // 今日配額是哪一天的
+    dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -94,6 +96,43 @@ function tierVisible(tier) {
   return !!s.showNew;
 }
 function isVisible(num) { return tierVisible(tierOf(num)); }
+
+/* ---------- 每日配額 ----------
+   7 天的原始份量雖然平均,但「已會」標得不平均,剩下的量就會歪掉,
+   而且越熟的那天會越背越快結束。所以不再問「這一天還剩幾張」,
+   改問「今天該背幾張」= 還沒搞定的字 ÷ 7,天天一樣多,標越多配額越低。
+   已會的字不算進分母(即使 toggle 打開來複習也一樣)。 */
+function quotaPool() {
+  return VOCAB_DATA.filter(e => tierOf(e.num) !== TIER_KNOWN && isVisible(e.num));
+}
+function dailyQuota() {
+  const n = quotaPool().length;
+  return n ? Math.max(1, Math.ceil(n / TOTAL_DAYS)) : 0;
+}
+function resetDailyIfNeeded() {
+  const today = todayStr();
+  if (PROGRESS.dailyDate !== today) {
+    PROGRESS.dailyDate = today;
+    PROGRESS.dailySeen = [];
+    saveLocalOnly();
+  }
+}
+function dailyDone() {
+  resetDailyIfNeeded();
+  return (PROGRESS.dailySeen || []).length;
+}
+function markSeenToday(num) {
+  resetDailyIfNeeded();
+  if (!PROGRESS.dailySeen.includes(num)) {
+    PROGRESS.dailySeen.push(num);
+    saveProgress();
+  }
+}
+function todayStats() {
+  const quota = dailyQuota();
+  const done = Math.min(dailyDone(), quota);
+  return { quota, done, pct: quota ? Math.round(done / quota * 100) : 0 };
+}
 
 /* ---------- cross-device sync (GitHub Gist as backend) ---------- */
 const SYNC_KEY = 'lgv_sync_v1';
@@ -282,30 +321,29 @@ function showView(id) {
 /* ---------- HOME ---------- */
 function renderHome() {
   ensureDayAdvance();
+  resetDailyIfNeeded();
   document.getElementById('home-day-num').textContent = PROGRESS.currentDay;
-  const pool = byDay[PROGRESS.currentDay] || [];
-  if (pool.length) {
-    document.getElementById('home-day-range').textContent =
-      `${pool[0].word} ⋯ ${pool[pool.length - 1].word}（${pool.length} 字）`;
-  }
-  const st = dayStats(PROGRESS.currentDay);
-  const pct = st.pct;
-  const circumference = 326.7256;
-  document.getElementById('ring-fg').style.strokeDashoffset = String(circumference * (1 - pct / 100));
-  document.getElementById('ring-pct').textContent = pct + '%';
+  const remaining = quotaPool().length;
+  const t = todayStats();
+  document.getElementById('home-day-range').textContent =
+    `還沒搞定 ${remaining} 字 · 今天 ${t.quota} 張`;
 
-  document.getElementById('stat-due').textContent = st.seen;
-  document.getElementById('stat-new').textContent = Math.max(0, st.total - st.seen);
+  const circumference = 326.7256;
+  document.getElementById('ring-fg').style.strokeDashoffset = String(circumference * (1 - t.pct / 100));
+  document.getElementById('ring-pct').textContent = t.pct + '%';
+
+  document.getElementById('stat-due').textContent = t.done;
+  document.getElementById('stat-new').textContent = Math.max(0, t.quota - t.done);
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
-
+  // 圓點顯示每一天「還沒看過」還剩幾張,一眼看出哪天積比較多
   const dotsEl = document.getElementById('day-dots');
   dotsEl.innerHTML = '';
   for (let d = 1; d <= TOTAL_DAYS; d++) {
-    const s = dayStats(d);
+    const left = activeDayPool(d).filter(e => !isSeen(e.num)).length;
     const div = document.createElement('div');
-    div.className = 'day-dot' + (d === PROGRESS.currentDay ? ' current' : '') + (s.pct === 100 ? ' done' : '');
-    div.textContent = 'D' + d;
+    div.className = 'day-dot' + (d === PROGRESS.currentDay ? ' current' : '') + (left === 0 ? ' done' : '');
+    div.innerHTML = `<b>D${d}</b><i>${left}</i>`;
     div.onclick = () => { PROGRESS.currentDay = d; saveProgress(); renderHome(); };
     dotsEl.appendChild(div);
   }
@@ -320,16 +358,42 @@ function activeDayPool(dayNum) {
   return (byDay[dayNum] || []).filter(e => isVisible(e.num));
 }
 
+/* 今天這一批:從 currentDay 開始往後走,先撿「還沒看過」的,
+   當天不夠就跟後面幾天借,湊滿配額為止;真的全部看過了才回頭撿看過的複習。
+   已經算進今天份量的字會跳過,所以中途退出再進來是接續、不是重來。 */
+function buildDailyQueue(extra) {
+  const need = extra || Math.max(0, dailyQuota() - dailyDone());
+  if (need <= 0) return [];
+  const doneToday = new Set(PROGRESS.dailySeen || []);
+  const queue = [];
+  // 一天一天走:先把當天的字拿光(沒看過的排前面、看過的排後面),
+  // 當天真的不夠了才跟下一天借。不能整批「全部沒看過的優先」——
+  // 那樣「有印象」的字(已經算看過)會被七天份的新字擠到永遠輪不到。
+  for (let i = 0; i < TOTAL_DAYS && queue.length < need; i++) {
+    const d = ((PROGRESS.currentDay - 1 + i) % TOTAL_DAYS) + 1;
+    const pool = activeDayPool(d).filter(e => !doneToday.has(e.num));
+    let unseen = pool.filter(e => !isSeen(e.num));
+    let seen = pool.filter(e => isSeen(e.num));
+    if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
+    for (const e of unseen.concat(seen)) {
+      if (queue.length >= need) break;
+      queue.push(e);
+      doneToday.add(e.num);
+    }
+  }
+  return queue;
+}
+
 function startSession() {
-  // 當天有開的分類;沒學過的排前面,學過的排後面(方便一週一輪)。
-  // 開了「隨機順序」則各組內打亂,打破位置記憶(交錯練習)。
-  const pool = activeDayPool(PROGRESS.currentDay);
-  let unseen = pool.filter(e => !isSeen(e.num));
-  let seen = pool.filter(e => isSeen(e.num));
-  if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
-  session = { queue: unseen.concat(seen), idx: 0, flipped: false };
-  if (session.queue.length === 0) {
-    alert('這一天沒有字可以背了。\n\n可能是都標成「已會」了,或是分類 toggle 全關著 —— 到統計頁看看。');
+  const q = buildDailyQueue();
+  session = { queue: q, idx: 0, flipped: false };
+  if (q.length === 0) {
+    const t = todayStats();
+    if (t.quota === 0) {
+      alert('沒有字可以背了。\n\n可能是都標成「已會」了,或是「還沒背」和「有印象」兩個 toggle 都關著 —— 到統計頁看看。');
+    } else {
+      alert(`今天的 ${t.quota} 張已經背完了!\n\n想再多背一點,到完成頁按「繼續下一批」。`);
+    }
     return;
   }
   touchStreak();
@@ -368,17 +432,17 @@ function renderCard() {
   document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
   syncActionButtons();
-  exposeWord(e.num); // 看過即標記,更新進度
+  exposeWord(e.num);      // 看過即標記
+  markSeenToday(e.num);   // 算進今天的配額
   renderCardProgress();
 }
 
-// 進度條顯示「當天累積進度」(只算目前開著的分類),退出再進來會接續
+// 進度條顯示「今天的配額進度」,中途退出再進來會接續
 function renderCardProgress() {
-  const st = dayStats(PROGRESS.currentDay);
-  const pct = st.total ? Math.round(st.seen / st.total * 100) : 0;
-  document.getElementById('session-progress-fill').style.width = pct + '%';
-  document.getElementById('session-progress-count').textContent = `${st.seen} / ${st.total}`;
-  document.getElementById('session-progress-pct').textContent = pct + '%';
+  const t = todayStats();
+  document.getElementById('session-progress-fill').style.width = t.pct + '%';
+  document.getElementById('session-progress-count').textContent = `${t.done} / ${t.quota}`;
+  document.getElementById('session-progress-pct').textContent = t.pct + '%';
 }
 
 function escapeHtml(s) {
@@ -474,13 +538,18 @@ function markCurrent(tier) {
 }
 
 function finishSession() {
-  const st = dayStats(PROGRESS.currentDay);
+  const t = todayStats();
+  const remaining = quotaPool().length;
   const known = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_KNOWN).length;
   const impress = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_IMPRESS).length;
+  const hit = t.done >= t.quota;
   document.getElementById('done-stats').innerHTML =
-    `Day ${PROGRESS.currentDay} 這一輪看完了！<br><br>本日已看過 <b>${st.seen}/${st.total}</b> 字` +
+    (hit ? '今天的份量完成了！' : '這一批看完了！') +
+    `<br><br>今日進度 <b>${t.done}/${t.quota}</b> 張` +
+    `<br>還沒搞定 <b>${remaining}</b> 字（照這個速度 ${Math.ceil(remaining / Math.max(1, t.quota))} 天輪一遍）` +
     `<br>✓ 已會 <b>${known}</b> ・ 🤔 有印象 <b>${impress}</b>`;
-  document.getElementById('btn-done-next').style.display = 'none';
+  // 還想多背就再抓一批同樣份量的
+  document.getElementById('btn-done-next').style.display = remaining ? '' : 'none';
   showView('view-done');
 }
 
@@ -656,6 +725,14 @@ document.getElementById('btn-speak').onclick = (ev) => {
   window.speechSynthesis.speak(u);
 };
 
+// 「繼續下一批」:再抓一批跟今日配額一樣多的字(超出配額也照跑)
+document.getElementById('btn-done-next').onclick = () => {
+  const q = buildDailyQueue(dailyQuota());
+  if (q.length === 0) { showView('view-home'); renderHome(); return; }
+  session = { queue: q, idx: 0, flipped: false };
+  showView('view-session');
+  renderCard();
+};
 document.getElementById('btn-done-home').onclick = () => { showView('view-home'); renderHome(); };
 
 document.getElementById('btn-export').onclick = exportProgress;
