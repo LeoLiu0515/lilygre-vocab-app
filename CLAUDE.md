@@ -61,6 +61,10 @@ const CACHE_NAME = 'lgv-cache-v11';  // → 改成 v12
 
 不改的話使用者手機會繼續吃舊快取,以為你沒改到。
 
+(`install` 灌快取時已經改用 `new Request(u, {cache:'reload'})` 硬走網路。
+之前是預設的 `cache.addAll(ASSETS)`,會走瀏覽器自己的 HTTP 快取 ——
+版號跳了、新快取裡裝的卻還是舊檔案。不要改回去。)
+
 ### 2. GitHub Pages 有時候不會自動觸發 build
 
 push 完要確認 build 真的跑了、而且跑的是你這個 commit:

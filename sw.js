@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lgv-cache-v14';
+const CACHE_NAME = 'lgv-cache-v15';
 const ASSETS = [
   './',
   './index.html',
@@ -10,9 +10,14 @@ const ASSETS = [
   './icon-512.png',
 ];
 
+// 灌新快取時一定要用 cache:'reload' 硬走網路。
+// 光是把 CACHE_NAME 加一號不夠 —— 預設的 addAll 會走瀏覽器自己的 HTTP 快取,
+// 結果新版快取裡裝的還是舊檔案,版號跳了畫面卻沒變。
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS.map((u) => new Request(u, { cache: 'reload' }))))
+      .then(() => self.skipWaiting())
   );
 });
 
