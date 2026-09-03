@@ -1,0 +1,5 @@
+# 跨 Mac / Windows 開發時,統一用 LF 存進 repo,避免整檔換行符號的假 diff
+* text=auto eol=lf
+
+# 二進位檔不要做任何轉換
+*.png binary

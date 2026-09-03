@@ -1,0 +1,11 @@
+# 作業系統產生的垃圾檔
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 編輯器
+.vscode/
+.idea/
+
+# 本機預覽設定(每台電腦可能不同)
+.claude/
