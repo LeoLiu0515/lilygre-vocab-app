@@ -25,16 +25,15 @@
     </header>
 
     <div class="home-hero">
-      <div class="hero-label">整份進度</div>
+      <div class="hero-label">本輪進度</div>
       <div class="progress-ring-wrap">
         <svg viewBox="0 0 120 120" class="progress-ring">
           <circle cx="60" cy="60" r="52" class="ring-bg"/>
-          <circle cx="60" cy="60" r="52" class="ring-fg2" id="ring-fg2"/>
           <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
         </svg>
         <div class="ring-label">
           <div id="ring-pct">0%</div>
-          <div class="ring-small" id="ring-count">已會 0 / 0</div>
+          <div class="ring-small" id="ring-count">本輪已背 0 / 0</div>
         </div>
       </div>
       <div class="home-breakdown" id="home-breakdown"></div>
@@ -74,8 +73,6 @@
       <div class="sp-head">卡片</div>
       <div class="sp-row"><span class="sp-label">翻卡先看背面</span>
         <button id="panel-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
-      <div class="sp-row"><span class="sp-label">操作鈕靠左（左手用）</span>
-        <button id="panel-left-handed" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
       <div class="sp-divider"></div>
       <div class="sp-head">要出現的分類</div>
       <div class="sp-row"><span class="sp-label">還沒背</span>
@@ -195,14 +192,6 @@
         </div>
         <button id="toggle-shuffle" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
       </div>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">操作鈕靠左</div>
-          <div class="setting-sub">「有印象」「已會」改到卡片左下角，左手單手拿手機比較按得到</div>
-        </div>
-        <button id="toggle-left-handed" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
-      </div>
-
       <h3>跨裝置同步</h3>
       <p class="stats-note" id="sync-status">尚未連接。連接後手機和電腦會自動同步同一份進度。</p>
       <div id="sync-connect-box">

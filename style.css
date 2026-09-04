@@ -56,10 +56,8 @@ html,body{
 .progress-ring-wrap{position:relative;width:158px;height:158px;}
 .progress-ring{width:158px;height:158px;transform:rotate(-90deg);}
 .ring-bg{fill:none;stroke:var(--surface2);stroke-width:5;}
-.ring-fg,.ring-fg2{fill:none;stroke-width:5;stroke-linecap:round;
+.ring-fg{fill:none;stroke-width:5;stroke-linecap:round;stroke:var(--gold);
   stroke-dasharray:326.7256;stroke-dashoffset:326.7256;transition:stroke-dashoffset .6s cubic-bezier(.2,.8,.3,1);}
-.ring-fg{stroke:var(--gold);}
-.ring-fg2{stroke:rgba(242,185,75,.32);}          /* 已會 + 有印象 的外圈 */
 .ring-label{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;}
 #ring-pct{font-family:var(--serif);font-size:36px;font-weight:700;}
 .ring-small{font-size:10.5px;color:var(--ink-dim);margin-top:4px;letter-spacing:.02em;font-variant-numeric:tabular-nums;}
@@ -167,11 +165,12 @@ html,body{
   color:var(--ink);font-weight:600;text-decoration:none;
   border-bottom:1.5px solid var(--gold);padding-bottom:1px;
 }
-.card-hint{position:absolute;bottom:22px;left:0;right:0;color:var(--ink-dim);font-size:11px;opacity:.65;letter-spacing:.05em;}
+/* 提示文字擺在操作鈕上方,兩個都置中,不會疊在一起 */
+.card-hint{position:absolute;bottom:98px;left:0;right:0;color:var(--ink-dim);font-size:11px;opacity:.65;letter-spacing:.05em;}
 
 /* 背面:條目排版 */
 .card-back{transform:rotateY(180deg);overflow-y:auto;align-items:stretch;justify-content:flex-start;-webkit-overflow-scrolling:touch;}
-.card-back-inner{margin:auto 0;width:100%;padding-right:56px;}
+.card-back-inner{margin:auto 0;width:100%;padding-bottom:104px;}
 /* 單字 + 小喇叭並排,只唸這個字 */
 .card-word-row{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
 .card-word-small{font-family:var(--serif);font-size:34px;font-weight:700;letter-spacing:-.01em;}
@@ -210,13 +209,11 @@ html,body{
   border:1px solid var(--hairline);background:var(--surface);
   padding:5px 12px;border-radius:999px;
 }
-/* IG 式右下角動作按鈕 */
+/* 動作鈕置底置中,不管左右手單手拿都同樣按得到,不用特別設定 */
 .action-stack{
-  position:absolute;right:18px;bottom:24px;z-index:6;
-  display:flex;flex-direction:column;gap:13px;
+  position:absolute;left:0;right:0;bottom:22px;z-index:6;
+  display:flex;flex-direction:row;justify-content:center;gap:22px;
 }
-/* 左手單手模式:整組搬到左下角,大拇指才按得到 */
-.card-stage.left-handed .action-stack{right:auto;left:18px;}
 .action-btn{
   width:56px;height:56px;border-radius:50%;
   background:rgba(255,255,255,.07);

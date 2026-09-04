@@ -23,9 +23,12 @@ function defaultProgress() {
     lastStudyDate: null,
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
     // 預設「已會」關著,跟舊版「封存的字永不出現」行為一致。
-    settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false, leftHanded: false },
+    settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
     dailyDate: null,     // 今日配額是哪一天的
     dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
+    cycleStart: null,    // 本輪(週)從哪一天開始算
+    cycleSeen: [],        // 本輪已經背過的 num(去重)
+    cycleTarget: 0,       // 本輪開始那天,還沒搞定的字有幾個(當週目標)
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -119,6 +122,42 @@ function todayStats() {
   const quota = dailyQuota();
   const done = dailyDone();
   return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
+}
+
+/* ---------- 本輪(一週一輪)進度 ----------
+   首頁不需要看「已會多少」的終身數字,要看的是「這一輪(這週)背了多少、
+   離下一輪還有幾天」。輪次是滾動的 7 天窗口,自動換輪 —— 不像每日配額
+   會卡在使用者手動按「重設」,因為換輪不會丟掉任何背誦紀錄,只是換一個
+   全新的計數,自動換也不會讓人不爽。 */
+function ensureCycle() {
+  const today = todayStr();
+  if (!PROGRESS.cycleStart) {
+    PROGRESS.cycleStart = today;
+    PROGRESS.cycleSeen = [];
+    PROGRESS.cycleTarget = quotaPool().length;
+    saveProgress();
+    return;
+  }
+  if (daysBetween(PROGRESS.cycleStart, today) >= WEEK_TARGET) {
+    PROGRESS.cycleStart = today;
+    PROGRESS.cycleSeen = [];
+    PROGRESS.cycleTarget = quotaPool().length;
+    saveProgress();
+  }
+}
+function markSeenThisCycle(num) {
+  ensureCycle();
+  if (!PROGRESS.cycleSeen.includes(num)) {
+    PROGRESS.cycleSeen.push(num);
+    saveProgress();
+  }
+}
+function cycleStats() {
+  ensureCycle();
+  const done = PROGRESS.cycleSeen.length;
+  const target = Math.max(PROGRESS.cycleTarget || 0, done);
+  const daysLeft = Math.max(0, WEEK_TARGET - daysBetween(PROGRESS.cycleStart, todayStr()));
+  return { done, target, daysLeft, pct: target ? Math.min(100, Math.round(done / target * 100)) : 0 };
 }
 
 /* ---------- cross-device sync (GitHub Gist as backend) ---------- */
@@ -301,27 +340,25 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  const o = overallStats();
+  const cy = cycleStats();
   const remaining = quotaPool().length;
   const t = todayStats();
 
   const circ = 326.7256;
-  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - o.pct / 100));
-  document.getElementById('ring-fg2').style.strokeDashoffset = String(circ * (1 - o.pctTouched / 100));
-  document.getElementById('ring-pct').textContent = o.pct + '%';
-  document.getElementById('ring-count').textContent = `已會 ${o.known} / ${o.total}`;
+  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - cy.pct / 100));
+  document.getElementById('ring-pct').textContent = cy.pct + '%';
+  document.getElementById('ring-count').textContent = `本輪已背 ${cy.done} / ${cy.target}`;
 
   document.getElementById('home-breakdown').innerHTML =
-    `<span>✓ 已會<b>${o.known}</b></span>` +
-    `<span>🤔 有印象<b>${o.impress}</b></span>` +
-    `<span>還沒背<b>${o.unlearned}</b></span>`;
+    `<span>還沒搞定<b>${remaining}</b></span>` +
+    `<span>距離下一輪<b>${cy.daysLeft}</b>天</span>`;
 
   document.getElementById('stat-due').textContent = t.done;
   document.getElementById('stat-new').textContent = Math.max(0, t.quota - t.done);
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
   document.getElementById('home-quota-note').textContent =
-    remaining ? `今天配額 ${t.quota} 張 · 還沒搞定 ${remaining} 字` : '整本都搞定了 🎉';
+    remaining ? `今天配額 ${t.quota} 張` : '整本都搞定了 🎉';
 }
 
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */
@@ -403,6 +440,7 @@ function renderCard() {
   syncActionButtons();
   exposeWord(e.num);      // 看過即標記
   markSeenToday(e.num);   // 算進今天的配額
+  markSeenThisCycle(e.num); // 算進這一輪(這週)背過的字
   renderCardProgress();
 }
 
@@ -512,9 +550,9 @@ function syncActionButtons() {
 /* ---------- 設定(統計頁 + 背卡頁右上角面板共用同一組) ---------- */
 const SETTING_SWITCHES = [
   ['toggle-show-new', 'showNew'], ['toggle-show-impress', 'showImpress'], ['toggle-show-known', 'showKnown'],
-  ['toggle-default-flip', 'defaultFlipped'], ['toggle-shuffle', 'shuffleOrder'], ['toggle-left-handed', 'leftHanded'],
+  ['toggle-default-flip', 'defaultFlipped'], ['toggle-shuffle', 'shuffleOrder'],
   ['panel-show-new', 'showNew'], ['panel-show-impress', 'showImpress'], ['panel-show-known', 'showKnown'],
-  ['panel-flip', 'defaultFlipped'], ['panel-left-handed', 'leftHanded'],
+  ['panel-flip', 'defaultFlipped'],
 ];
 function syncToggleUI() {
   for (const [id, key] of SETTING_SWITCHES) {
@@ -522,18 +560,11 @@ function syncToggleUI() {
     if (el) el.setAttribute('aria-checked', String(!!PROGRESS.settings[key]));
   }
 }
-// 「有印象 / 已會」按鈕貼右下角,右手單手用大拇指剛好按得到;左手就按不到。
-// 開了這個就整組搬到左下角。
-function applyHandedness() {
-  const stage = document.querySelector('.card-stage');
-  if (stage) stage.classList.toggle('left-handed', !!PROGRESS.settings.leftHanded);
-}
 function setSetting(key, val) {
   PROGRESS.settings[key] = val;
   saveProgress();
   syncToggleUI();
   renderHome();
-  if (key === 'leftHanded') applyHandedness();
   const inSession = document.getElementById('view-session').classList.contains('active');
   if (inSession && key === 'defaultFlipped') {
     // 立刻套到眼前這張卡,不用等下一張
@@ -1004,7 +1035,6 @@ document.addEventListener('keydown', (ev) => {
 
 /* ---------- init ---------- */
 syncToggleUI();
-applyHandedness();
 renderHome();
 pullSyncOnLoad().then(() => {
   // only refresh the visible screen; don't yank the user out of an active session
