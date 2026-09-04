@@ -197,7 +197,7 @@ html,body{
   border-left:3px solid var(--gold);
   padding:4px 0 4px 14px;margin-bottom:18px;
 }
-.card-zh{font-size:22px;line-height:1.5;font-weight:800;margin-bottom:16px;}
+.card-zh{font-size:22px;line-height:1.5;font-weight:800;}
 .card-section{margin-bottom:15px;}
 .card-label{font-size:10.5px;color:var(--ink-dim);font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px;}
 .card-example{font-size:14.5px;line-height:1.75;color:#c9c5bc;}
