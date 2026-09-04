@@ -1,11 +1,9 @@
 /* ---------- storage & state ---------- */
 const STORAGE_KEY = 'lgv_progress_v2';
-const TOTAL_DAYS = 7;
+// 配額用:目標一週把「還沒搞定」的字輪一遍。沒有實體的「第幾天」分頁了 —— 整本
+// 就是一份 1738 字,配額只是把它切成七等份,標越多、每份越小。
+const WEEK_TARGET = 7;
 
-const byDay = {};
-for (const e of VOCAB_DATA) {
-  (byDay[e.day] ||= []).push(e);
-}
 const byNum = {};
 for (const e of VOCAB_DATA) byNum[e.num] = e;
 
@@ -21,7 +19,6 @@ function daysBetween(a, b) {
 function defaultProgress() {
   return {
     words: {},          // num -> {box, due, reps, lapses, seen}
-    currentDay: 1,
     streak: 0,
     lastStudyDate: null,
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
@@ -91,23 +88,20 @@ function tierVisible(tier) {
 function isVisible(num) { return tierVisible(tierOf(num)); }
 
 /* ---------- 每日配額 ----------
-   7 天的原始份量雖然平均,但「已會」標得不平均,剩下的量就會歪掉,
-   而且越熟的那天會越背越快結束。所以不再問「這一天還剩幾張」,
-   改問「今天該背幾張」= 還沒搞定的字 ÷ 7,天天一樣多,標越多配額越低。
+   「今天該背幾張」= 還沒搞定的字 ÷ 7,標越多、配額越低,大約一週輪一遍整本。
    已會的字不算進分母(即使 toggle 打開來複習也一樣)。 */
 function quotaPool() {
   return VOCAB_DATA.filter(e => tierOf(e.num) !== TIER_KNOWN && isVisible(e.num));
 }
 function dailyQuota() {
   const n = quotaPool().length;
-  return n ? Math.max(1, Math.ceil(n / TOTAL_DAYS)) : 0;
+  return n ? Math.max(1, Math.ceil(n / WEEK_TARGET)) : 0;
 }
-// 這一批的計數「不會」自己跨日歸零 —— 半夜還在背的時候被時鐘清掉很惱人。
-// 只有按首頁的「開始新的一天」才會重來。
+// 今日計數「不會」自己跨日歸零 —— 半夜還在背被時鐘清掉很惱人。
+// 只有按首頁的「重設今日進度」才會重來。
 function startNewDay() {
   PROGRESS.dailyDate = todayStr();
   PROGRESS.dailySeen = [];
-  PROGRESS.currentDay = (PROGRESS.currentDay % TOTAL_DAYS) + 1;
   saveProgress();
   renderHome();
 }
@@ -123,8 +117,8 @@ function markSeenToday(num) {
 }
 function todayStats() {
   const quota = dailyQuota();
-  const done = Math.min(dailyDone(), quota);
-  return { quota, done, pct: quota ? Math.round(done / quota * 100) : 0 };
+  const done = dailyDone();
+  return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
 }
 
 /* ---------- cross-device sync (GitHub Gist as backend) ---------- */
@@ -273,12 +267,21 @@ function newList(pool) {
   return pool.filter(e => !isSeen(e.num));
 }
 
-// 分母 = 目前 toggle 開著的那幾類在這一天有幾張;分子 = 其中已經看過的。
-// 關掉一類,進度條就跟著只算剩下的字。
-function dayStats(dayNum) {
-  const pool = activeDayPool(dayNum);
-  const seenCount = pool.filter(e => isSeen(e.num)).length;
-  return { total: pool.length, seen: seenCount, pct: pool.length ? Math.round(seenCount / pool.length * 100) : 0 };
+// 整份進度:已會 = 完成,有印象 = 進行中,其餘 = 還沒背。
+// 分母永遠是整本 1738,關 toggle 不影響這個數字。
+function overallStats() {
+  let known = 0, impress = 0;
+  for (const e of VOCAB_DATA) {
+    const t = tierOf(e.num);
+    if (t === TIER_KNOWN) known++;
+    else if (t === TIER_IMPRESS) impress++;
+  }
+  const total = VOCAB_DATA.length;
+  return {
+    known, impress, unlearned: total - known - impress, total,
+    pct: Math.round(known / total * 100),
+    pctTouched: Math.round((known + impress) / total * 100),
+  };
 }
 
 function shuffle(arr) {
@@ -298,77 +301,58 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  document.getElementById('home-day-num').textContent = PROGRESS.currentDay;
+  const o = overallStats();
   const remaining = quotaPool().length;
   const t = todayStats();
-  document.getElementById('home-day-range').textContent =
-    `還沒搞定 ${remaining} 字 · 今天 ${t.quota} 張`;
 
-  const circumference = 326.7256;
-  document.getElementById('ring-fg').style.strokeDashoffset = String(circumference * (1 - t.pct / 100));
-  document.getElementById('ring-pct').textContent = t.pct + '%';
+  const circ = 326.7256;
+  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - o.pct / 100));
+  document.getElementById('ring-fg2').style.strokeDashoffset = String(circ * (1 - o.pctTouched / 100));
+  document.getElementById('ring-pct').textContent = o.pct + '%';
+  document.getElementById('ring-count').textContent = `已會 ${o.known} / ${o.total}`;
+
+  document.getElementById('home-breakdown').innerHTML =
+    `<span>✓ 已會<b>${o.known}</b></span>` +
+    `<span>🤔 有印象<b>${o.impress}</b></span>` +
+    `<span>還沒背<b>${o.unlearned}</b></span>`;
 
   document.getElementById('stat-due').textContent = t.done;
   document.getElementById('stat-new').textContent = Math.max(0, t.quota - t.done);
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
-  // 圓點顯示每一天「還沒看過」還剩幾張,一眼看出哪天積比較多
-  const dotsEl = document.getElementById('day-dots');
-  dotsEl.innerHTML = '';
-  for (let d = 1; d <= TOTAL_DAYS; d++) {
-    const left = activeDayPool(d).filter(e => !isSeen(e.num)).length;
-    const div = document.createElement('div');
-    div.className = 'day-dot' + (d === PROGRESS.currentDay ? ' current' : '') + (left === 0 ? ' done' : '');
-    div.innerHTML = `<b>D${d}</b><i>${left}</i>`;
-    div.onclick = () => { PROGRESS.currentDay = d; saveProgress(); renderHome(); };
-    dotsEl.appendChild(div);
-  }
+  document.getElementById('home-quota-note').textContent =
+    remaining ? `今天配額 ${t.quota} 張 · 還沒搞定 ${remaining} 字` : '整本都搞定了 🎉';
 }
 
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */
 let session = { queue: [], idx: 0, flipped: false };
 
 function isArchived(num) { return !!getState(num).archived; }
-// 只留下「目前 toggle 有開的分類」的字
-function activeDayPool(dayNum) {
-  return (byDay[dayNum] || []).filter(e => isVisible(e.num));
-}
 
-/* 今天這一批:從 currentDay 開始往後走,先撿「還沒看過」的,
-   當天不夠就跟後面幾天借,湊滿配額為止;真的全部看過了才回頭撿看過的複習。
-   已經算進今天份量的字會跳過,所以中途退出再進來是接續、不是重來。 */
-function buildDailyQueue(extra) {
-  const need = extra || Math.max(0, dailyQuota() - dailyDone());
+/* 今天這一批:整本從頭往後掃,只收「目前分類 toggle 有開」而且今天還沒算過的字。
+   沒看過的排前面、看過的排後面(方便一週一輪);開了隨機順序就各自打亂。
+   已算進今日份量的字會跳過,所以中途退出再進來是接續、不是重來。 */
+function buildQueue(need) {
+  need = need || Math.max(0, dailyQuota() - dailyDone());
   if (need <= 0) return [];
   const doneToday = new Set(PROGRESS.dailySeen || []);
-  const queue = [];
-  // 一天一天走:先把當天的字拿光(沒看過的排前面、看過的排後面),
-  // 當天真的不夠了才跟下一天借。不能整批「全部沒看過的優先」——
-  // 那樣「有印象」的字(已經算看過)會被七天份的新字擠到永遠輪不到。
-  for (let i = 0; i < TOTAL_DAYS && queue.length < need; i++) {
-    const d = ((PROGRESS.currentDay - 1 + i) % TOTAL_DAYS) + 1;
-    const pool = activeDayPool(d).filter(e => !doneToday.has(e.num));
-    let unseen = pool.filter(e => !isSeen(e.num));
-    let seen = pool.filter(e => isSeen(e.num));
-    if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
-    for (const e of unseen.concat(seen)) {
-      if (queue.length >= need) break;
-      queue.push(e);
-      doneToday.add(e.num);
-    }
-  }
-  return queue;
+  const pool = VOCAB_DATA.filter(e => isVisible(e.num) && !doneToday.has(e.num));
+  let unseen = pool.filter(e => !isSeen(e.num));
+  let seen = pool.filter(e => isSeen(e.num));
+  if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
+  return unseen.concat(seen).slice(0, need);
 }
 
 function startSession() {
-  const q = buildDailyQueue();
+  syncToggleUI();
+  const q = buildQueue();
   session = { queue: q, idx: 0, flipped: false };
   if (q.length === 0) {
     const t = todayStats();
     if (t.quota === 0) {
-      alert('沒有字可以背了。\n\n可能是都標成「已會」了,或是「還沒背」和「有印象」兩個 toggle 都關著 —— 到統計頁看看。');
+      alert('沒有字可以背了。\n\n可能是都標成「已會」了,或是「還沒背」和「有印象」兩個分類都關掉了 —— 點右上角的設定開回來。');
     } else {
-      alert(`今天的 ${t.quota} 張已經背完了!\n\n想再多背一點,到完成頁按「繼續下一批」。`);
+      alert(`今天配額的 ${t.quota} 張都背完了!\n\n想再多背一點,到完成頁按「繼續下一批」。`);
     }
     return;
   }
@@ -525,6 +509,55 @@ function syncActionButtons() {
   document.getElementById('btn-archive').classList.toggle('on', t === TIER_KNOWN);
 }
 
+/* ---------- 設定(統計頁 + 背卡頁右上角面板共用同一組) ---------- */
+const SETTING_SWITCHES = [
+  ['toggle-show-new', 'showNew'], ['toggle-show-impress', 'showImpress'], ['toggle-show-known', 'showKnown'],
+  ['toggle-default-flip', 'defaultFlipped'], ['toggle-shuffle', 'shuffleOrder'],
+  ['panel-show-new', 'showNew'], ['panel-show-impress', 'showImpress'], ['panel-show-known', 'showKnown'],
+  ['panel-flip', 'defaultFlipped'],
+];
+function syncToggleUI() {
+  for (const [id, key] of SETTING_SWITCHES) {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-checked', String(!!PROGRESS.settings[key]));
+  }
+}
+function setSetting(key, val) {
+  PROGRESS.settings[key] = val;
+  saveProgress();
+  syncToggleUI();
+  renderHome();
+  const inSession = document.getElementById('view-session').classList.contains('active');
+  if (inSession && key === 'defaultFlipped') {
+    // 立刻套到眼前這張卡,不用等下一張
+    session.flipped = val;
+    document.getElementById('flashcard').classList.toggle('flipped', val);
+  } else if (inSession && (key === 'showNew' || key === 'showImpress' || key === 'showKnown')) {
+    refreshSessionQueue();
+  }
+  if (document.getElementById('view-stats').classList.contains('active')) renderStats();
+}
+
+// toggle 分類後,把這回合的佇列整個重排 = 目前所有「有開的分類 + 今天還沒算過」的字,
+// 沒看過的排前面、看過的(含有印象)排後面。這裡不套每日配額 —— 使用者主動開了某類,
+// 就是要看到那類的全部;要停隨時退出。眼前這張即使剛被藏起來也先留著,滑走才消失。
+function refreshSessionQueue() {
+  if (!session.queue.length) return;
+  const curNum = currentEntry() ? currentEntry().num : null;
+  const doneToday = new Set(PROGRESS.dailySeen || []);
+  const pool = VOCAB_DATA.filter(e =>
+    (isVisible(e.num) && !doneToday.has(e.num)) || e.num === curNum);
+  let unseen = pool.filter(e => !isSeen(e.num));
+  let seen = pool.filter(e => isSeen(e.num));
+  if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
+  const q = unseen.concat(seen);
+  if (q.length === 0) { finishSession(); return; }
+  session.queue = q;
+  const i = q.findIndex(e => e.num === curNum);
+  session.idx = i >= 0 ? i : Math.min(session.idx, q.length - 1);
+  renderCard();
+}
+
 function markCurrent(tier) {
   // 過場動畫還在跑的時候別接受第二次點擊,不然會標到已經換掉的那張卡
   if (swapping) return;
@@ -576,35 +609,21 @@ function exposeWord(num) {
 
 /* ---------- STATS VIEW ---------- */
 function renderStats() {
-  const totalSeen = VOCAB_DATA.filter(e => isSeen(e.num)).length;
-  const daysDone = [1,2,3,4,5,6,7].filter(d => dayStats(d).pct === 100).length;
+  const o = overallStats();
   document.getElementById('stats-grid').innerHTML = `
-    <div class="stat-chip"><span>${totalSeen}</span><label>已學過 / ${VOCAB_DATA.length}</label></div>
-    <div class="stat-chip"><span>${Math.round(totalSeen / VOCAB_DATA.length * 100)}%</span><label>總進度</label></div>
-    <div class="stat-chip"><span>${daysDone}/7</span><label>完成天數</label></div>
+    <div class="stat-chip"><span>${o.known}</span><label>✓ 已會 / ${o.total}</label></div>
+    <div class="stat-chip"><span>${o.pct}%</span><label>整份進度</label></div>
+    <div class="stat-chip"><span>${o.impress}</span><label>🤔 有印象</label></div>
     <div class="stat-chip"><span>${PROGRESS.streak}</span><label>🔥 連續天數</label></div>
   `;
-  const daysEl = document.getElementById('stats-days');
-  daysEl.innerHTML = '';
-  for (let d = 1; d <= TOTAL_DAYS; d++) {
-    const s = dayStats(d);
-    const row = document.createElement('div');
-    row.className = 'day-row';
-    row.innerHTML = `<div class="dlabel">Day ${d}</div><div class="dbar"><div class="dbar-fill" style="width:${s.pct}%"></div></div><div class="dnum">${s.seen}/${s.total}</div>`;
-    daysEl.appendChild(row);
-  }
 
   const counts = { 1: 0, 2: 0, 3: 0 };
   for (const e of VOCAB_DATA) counts[tierOf(e.num)]++;
   document.getElementById('count-new').textContent = counts[TIER_NEW];
   document.getElementById('count-impress').textContent = counts[TIER_IMPRESS];
   document.getElementById('count-known').textContent = counts[TIER_KNOWN];
-  document.getElementById('toggle-show-new').setAttribute('aria-checked', String(!!PROGRESS.settings.showNew));
-  document.getElementById('toggle-show-impress').setAttribute('aria-checked', String(!!PROGRESS.settings.showImpress));
-  document.getElementById('toggle-show-known').setAttribute('aria-checked', String(!!PROGRESS.settings.showKnown));
 
-  document.getElementById('toggle-default-flip').setAttribute('aria-checked', String(!!PROGRESS.settings.defaultFlipped));
-  document.getElementById('toggle-shuffle').setAttribute('aria-checked', String(!!PROGRESS.settings.shuffleOrder));
+  syncToggleUI();
   document.getElementById('btn-undo-reset').style.display = localStorage.getItem(RESET_BACKUP_KEY) ? '' : 'none';
   renderSearchList();
   renderSyncUI();
@@ -710,14 +729,26 @@ function importProgress(file) {
 document.getElementById('btn-start-session').onclick = startSession;
 document.getElementById('btn-new-day').onclick = () => {
   // 只有已經背了才問一聲,免得手滑把今天的進度清掉
-  if (dailyDone() > 0 && !confirm(`今天已經背了 ${dailyDone()} 張。\n\n確定要歸零、開始新的一天嗎？（分類和背過的紀錄都不受影響）`)) return;
+  if (dailyDone() > 0 && !confirm(`今天已經背了 ${dailyDone()} 張。\n\n確定要把今日進度歸零、重新開始嗎？（分類和背過的紀錄都不受影響）`)) return;
   startNewDay();
 };
 document.getElementById('btn-stats').onclick = () => { renderStats(); showView('view-stats'); };
 document.getElementById('btn-exit-stats').onclick = () => { showView('view-home'); renderHome(); };
 
+const sessionPanel = document.getElementById('session-panel');
+function closeSessionPanel() { sessionPanel.hidden = true; }
+document.getElementById('btn-session-settings').onclick = (ev) => {
+  ev.stopPropagation();
+  sessionPanel.hidden = !sessionPanel.hidden;
+};
+document.addEventListener('click', (ev) => {
+  if (!sessionPanel.hidden && !sessionPanel.contains(ev.target) &&
+      ev.target.closest('#btn-session-settings') === null) closeSessionPanel();
+});
+
 document.getElementById('btn-exit-session').onclick = () => {
   window.speechSynthesis && window.speechSynthesis.cancel();
+  closeSessionPanel();
   showView('view-home'); renderHome();
 };
 document.getElementById('flashcard').onclick = flipCard;
@@ -741,7 +772,7 @@ document.getElementById('btn-speak').onclick = (ev) => {
 
 // 「繼續下一批」:再抓一批跟今日配額一樣多的字(超出配額也照跑)
 document.getElementById('btn-done-next').onclick = () => {
-  const q = buildDailyQueue(dailyQuota());
+  const q = buildQueue(dailyQuota());
   if (q.length === 0) { showView('view-home'); renderHome(); return; }
   session = { queue: q, idx: 0, flipped: false };
   showView('view-session');
@@ -794,26 +825,10 @@ document.getElementById('btn-undo-reset').onclick = () => {
   }
 };
 
-document.getElementById('toggle-default-flip').onclick = (ev) => {
-  PROGRESS.settings.defaultFlipped = !PROGRESS.settings.defaultFlipped;
-  ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.defaultFlipped));
-  saveProgress();
-};
-document.getElementById('toggle-shuffle').onclick = (ev) => {
-  PROGRESS.settings.shuffleOrder = !PROGRESS.settings.shuffleOrder;
-  ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings.shuffleOrder));
-  saveProgress();
-};
-
-// 三個分類 toggle:只改「要不要出現」,不動任何一個字的分類本身
-for (const [id, key] of [['toggle-show-new', 'showNew'], ['toggle-show-impress', 'showImpress'], ['toggle-show-known', 'showKnown']]) {
-  document.getElementById(id).onclick = (ev) => {
-    PROGRESS.settings[key] = !PROGRESS.settings[key];
-    ev.currentTarget.setAttribute('aria-checked', String(PROGRESS.settings[key]));
-    saveProgress();
-    renderStats();
-    renderHome();
-  };
+// 統計頁與背卡面板的所有 toggle 走同一條路:改設定 → 同步兩邊 UI → 需要時重整佇列
+for (const [id, key] of SETTING_SWITCHES) {
+  const el = document.getElementById(id);
+  if (el) el.onclick = () => setSetting(key, !PROGRESS.settings[key]);
 }
 
 document.getElementById('word-search').oninput = renderSearchList;
@@ -981,6 +996,7 @@ document.addEventListener('keydown', (ev) => {
 })();
 
 /* ---------- init ---------- */
+syncToggleUI();
 renderHome();
 pullSyncOnLoad().then(() => {
   // only refresh the visible screen; don't yank the user out of an active session

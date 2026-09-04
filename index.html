@@ -25,18 +25,19 @@
     </header>
 
     <div class="home-hero">
-      <div class="hero-day">Day <span id="home-day-num">1</span> / 7</div>
-      <div class="hero-sub" id="home-day-range">—</div>
+      <div class="hero-label">整份進度</div>
       <div class="progress-ring-wrap">
         <svg viewBox="0 0 120 120" class="progress-ring">
           <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg2" id="ring-fg2"/>
           <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
         </svg>
         <div class="ring-label">
           <div id="ring-pct">0%</div>
-          <div class="ring-small">今日進度</div>
+          <div class="ring-small" id="ring-count">已會 0 / 0</div>
         </div>
       </div>
+      <div class="home-breakdown" id="home-breakdown"></div>
     </div>
 
     <div class="stat-row">
@@ -45,12 +46,11 @@
       <div class="stat-chip"><span id="stat-streak">0</span><label>🔥 連續天數</label></div>
     </div>
 
-    <button id="btn-start-session" class="cta-btn">開始通勤學習</button>
+    <button id="btn-start-session" class="cta-btn">開始背單字</button>
 
-    <div class="day-picker">
-      <div class="day-picker-label">從哪一天開始抽（數字＝還沒看過的）</div>
-      <div class="day-dots" id="day-dots"></div>
-      <button id="btn-new-day" class="ghost-btn">↻ 開始新的一天（歸零今日進度）</button>
+    <div class="home-foot">
+      <div class="home-quota-note" id="home-quota-note">—</div>
+      <button id="btn-new-day" class="ghost-btn">↻ 重設今日進度</button>
     </div>
   </section>
 
@@ -65,7 +65,24 @@
           <span id="session-progress-pct">0%</span>
         </div>
       </div>
+      <button id="btn-session-settings" class="icon-btn" title="設定" aria-label="設定">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 7h11M3.5 12h6M3.5 17h13"/><circle cx="18" cy="7" r="2.3"/><circle cx="13" cy="12" r="2.3"/><circle cx="20.5" cy="17" r="2.3"/></svg>
+      </button>
     </header>
+
+    <div id="session-panel" class="session-panel" hidden>
+      <div class="sp-head">卡片</div>
+      <div class="sp-row"><span class="sp-label">翻卡先看背面</span>
+        <button id="panel-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
+      <div class="sp-divider"></div>
+      <div class="sp-head">要出現的分類</div>
+      <div class="sp-row"><span class="sp-label">還沒背</span>
+        <button id="panel-show-new" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button></div>
+      <div class="sp-row"><span class="sp-label">🤔 有印象</span>
+        <button id="panel-show-impress" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button></div>
+      <div class="sp-row"><span class="sp-label">✓ 已會</span>
+        <button id="panel-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
+    </div>
 
     <div class="card-stage">
       <div id="card-swiper">
@@ -125,8 +142,6 @@
     </header>
     <div class="stats-body">
       <div class="stats-grid" id="stats-grid"></div>
-      <h3>各天進度</h3>
-      <div id="stats-days"></div>
 
       <h3>單字卡要出現哪幾類</h3>
       <p class="stats-note">關掉的那一類背卡時不會出現，進度條的分母也只算開著的字。隨時可以再打開，分類不會消失。</p>

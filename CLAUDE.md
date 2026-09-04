@@ -11,9 +11,9 @@
 
 | 檔案 | 內容 |
 |---|---|
-| `index.html` | 全部 6 個畫面(view-home / session / quiz / listen / done / stats) |
+| `index.html` | 4 個畫面(view-home / session / done / stats) |
 | `style.css` | 深色編輯風格主題,金色強調色,襯線字體標題 |
-| `app.js` | 所有邏輯(約 1000 行,無模組) |
+| `app.js` | 所有邏輯(無模組) |
 | `data.js` | `const VOCAB_DATA = [...]`,1738 個單字物件 |
 | `sw.js` | Service Worker,離線快取 |
 | `manifest.json`, `icon-*.png` | PWA 安裝設定 |
@@ -24,7 +24,17 @@
 { num, root, root_gloss, word, mnemonic, meaning_zh[], meaning_en[], example[], synonyms[], day }
 ```
 
-1738 個字依字根分成 7 天(每天 246–250 字),`day` 欄位 1–7。使用者的目標是**一週把整本輪一遍**。
+`day` 欄位還在(1–7)但**程式已經完全不看它** —— 整本就是一份 1738 字,依 `num` 順序背。
+
+### 三分類 + 每日配額(取代了舊的「第幾天 / 第幾箱 SRS」)
+
+- 每個字屬於三類之一,存在 `PROGRESS.words[num]`:`archived`=已會、`impress`=有印象、都沒有=還沒背。
+  **`archived` 是舊的封存旗標,絕對不能改寫或搬移**(使用者說過 "can't afford 重新 archive")。
+- `settings.showNew / showImpress / showKnown` 決定哪幾類會出現在單字卡。預設「已會」關著。
+- 每日配額 = (有印象 + 還沒背,且分類有開的字) ÷ 7,標越多配額越低,約一週輪一遍。
+  已會不算進分母。今日計數 `dailySeen` **不會自己跨日歸零**,只有首頁「重設今日進度」才清。
+- 首頁圓環 = 已會 / 1738(外圈淡色 = 已會+有印象)。使用者的目標是**一週把整本輪一遍**。
+- 背卡頁右上角的齒輪面板 = 統計頁那幾個 toggle 的另一個入口,共用 `SETTING_SWITCHES` 清單。
 
 ## 記憶法(`mnemonic`)的撰寫規則
 
@@ -43,11 +53,11 @@
 
 | key | 用途 |
 |---|---|
-| `lgv_progress_v2` | 主要進度:看過的字、封存的字、currentDay、streak |
+| `lgv_progress_v2` | 主要進度:`words`(每字的 archived/impress/seen)、`settings`、`dailySeen`、`streak` |
 | `lgv_last_reset_backup_v1` | 重置前的自動快照(統計頁有「復原上次重置」) |
 | `lgv_sync_v1` | GitHub Gist 跨裝置同步設定 |
 
-**重要**:封存(archive)的字和背誦進度是分開存的,「重置」只能清背誦進度,**不可以連封存一起清掉** —— 這是修過的 bug,不要改回去。
+**重要**:分類(archived / impress)和背誦進度是分開存的,「重置背誦進度」只清 seen/box 那些,**分類完全不動** —— 這是修過的 bug,不要改回去。
 
 ## 部署流程
 
