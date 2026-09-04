@@ -23,7 +23,7 @@ function defaultProgress() {
     lastStudyDate: null,
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
     // 預設「已會」關著,跟舊版「封存的字永不出現」行為一致。
-    settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
+    settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false, leftHanded: false },
     dailyDate: null,     // 今日配額是哪一天的
     dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
@@ -512,9 +512,9 @@ function syncActionButtons() {
 /* ---------- 設定(統計頁 + 背卡頁右上角面板共用同一組) ---------- */
 const SETTING_SWITCHES = [
   ['toggle-show-new', 'showNew'], ['toggle-show-impress', 'showImpress'], ['toggle-show-known', 'showKnown'],
-  ['toggle-default-flip', 'defaultFlipped'], ['toggle-shuffle', 'shuffleOrder'],
+  ['toggle-default-flip', 'defaultFlipped'], ['toggle-shuffle', 'shuffleOrder'], ['toggle-left-handed', 'leftHanded'],
   ['panel-show-new', 'showNew'], ['panel-show-impress', 'showImpress'], ['panel-show-known', 'showKnown'],
-  ['panel-flip', 'defaultFlipped'],
+  ['panel-flip', 'defaultFlipped'], ['panel-left-handed', 'leftHanded'],
 ];
 function syncToggleUI() {
   for (const [id, key] of SETTING_SWITCHES) {
@@ -522,11 +522,18 @@ function syncToggleUI() {
     if (el) el.setAttribute('aria-checked', String(!!PROGRESS.settings[key]));
   }
 }
+// 「有印象 / 已會」按鈕貼右下角,右手單手用大拇指剛好按得到;左手就按不到。
+// 開了這個就整組搬到左下角。
+function applyHandedness() {
+  const stage = document.querySelector('.card-stage');
+  if (stage) stage.classList.toggle('left-handed', !!PROGRESS.settings.leftHanded);
+}
 function setSetting(key, val) {
   PROGRESS.settings[key] = val;
   saveProgress();
   syncToggleUI();
   renderHome();
+  if (key === 'leftHanded') applyHandedness();
   const inSession = document.getElementById('view-session').classList.contains('active');
   if (inSession && key === 'defaultFlipped') {
     // 立刻套到眼前這張卡,不用等下一張
@@ -997,6 +1004,7 @@ document.addEventListener('keydown', (ev) => {
 
 /* ---------- init ---------- */
 syncToggleUI();
+applyHandedness();
 renderHome();
 pullSyncOnLoad().then(() => {
   // only refresh the visible screen; don't yank the user out of an active session

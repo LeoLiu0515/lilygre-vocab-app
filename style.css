@@ -215,6 +215,8 @@ html,body{
   position:absolute;right:18px;bottom:24px;z-index:6;
   display:flex;flex-direction:column;gap:13px;
 }
+/* 左手單手模式:整組搬到左下角,大拇指才按得到 */
+.card-stage.left-handed .action-stack{right:auto;left:18px;}
 .action-btn{
   width:56px;height:56px;border-radius:50%;
   background:rgba(255,255,255,.07);
