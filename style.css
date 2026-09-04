@@ -197,13 +197,28 @@ html,body{
   border-left:3px solid var(--gold);
   padding:4px 0 4px 14px;margin-bottom:18px;
 }
-.card-zh{font-size:22px;line-height:1.5;font-weight:800;}
 .card-section{margin-bottom:15px;}
 .card-label{font-size:10.5px;color:var(--ink-dim);font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin-bottom:6px;}
+.card-label-gold{color:var(--gold);}
 .card-example{font-size:14.5px;line-height:1.75;color:#c9c5bc;}
 .card-example .ex-en{display:block;}
 .card-example .ex-zh{display:block;margin-top:5px;font-size:13px;color:var(--ink-dim);line-height:1.7;}
 .card-example .ex-en + .ex-zh + .ex-en{margin-top:14px;}
+
+/* 猜題區:先看英文例句,一條細線標出「這是題目」,和下面「意思」的答案感區分開 */
+.card-quiz{
+  border-left:2px solid var(--hairline);
+  padding:1px 0 1px 14px;margin-bottom:22px;
+}
+.card-quiz .card-example{font-size:15px;color:#a9a59c;}
+
+/* 答案區:意思公布,例句的中文翻譯這時候才跟著出現,確認你猜對了 */
+.card-reveal{margin-bottom:20px;}
+.card-zh{font-size:22px;line-height:1.5;font-weight:800;}
+.card-ex-confirm{
+  margin-top:9px;font-size:12.5px;line-height:1.65;color:var(--ink-dim);
+}
+.card-ex-confirm:empty{display:none;}
 .card-syn{display:flex;flex-wrap:wrap;gap:7px;}
 .syn-chip{
   font-size:12.5px;font-weight:600;color:var(--ink);
