@@ -387,24 +387,14 @@ function renderCard() {
   hookEl.textContent = e.mnemonic || '';
   hookEl.style.display = e.mnemonic ? '' : 'none';
   document.getElementById('card-zh').textContent = (e.meaning_zh || []).join('；');
-  // 例句原文是「英文.中文」黏在一起的。第一句只先給英文(畫底線)當猜題,
-  // 中文翻譯留到「意思」公布後才貼上去當確認 —— 不然翻譯就在題目正下方,等於直接看到答案。
-  const examples = e.example || [];
-  const first = examples[0] || '';
-  const firstEn = englishOnly(first);
-  const firstZh = first.slice(firstEn.length).replace(/^[\s.,;:]+/, '').trim();
-  document.getElementById('card-example').innerHTML = firstEn ? underlineTarget(firstEn, e.word) : '';
-  document.getElementById('card-example-wrap').style.display = firstEn ? '' : 'none';
-  document.getElementById('card-ex-confirm').textContent = firstZh;
-  // 第二句以後的例句公布意思後才有意義去讀,英文中文一起附在後面
-  const moreEx = examples.slice(1).map(x => {
+  // 例句原文是「英文.中文」黏在一起的,拆成兩行才讀得下去
+  document.getElementById('card-example').innerHTML = (e.example || []).map(x => {
     const en = englishOnly(x);
     const zh = x.slice(en.length).replace(/^[\s.,;:]+/, '').trim();
     return '<span class="ex-en">' + underlineTarget(en, e.word) + '</span>' +
       (zh ? '<span class="ex-zh">' + escapeHtml(zh) + '</span>' : '');
   }).join('');
-  document.getElementById('card-more-ex').innerHTML = moreEx;
-  document.getElementById('card-more-ex-wrap').style.display = moreEx ? '' : 'none';
+  document.getElementById('card-example-wrap').style.display = (e.example || []).length ? '' : 'none';
   const synTokens = (e.synonyms || []).join(',').split(/[,，]/).map(s => s.trim()).filter(Boolean);
   document.getElementById('card-syn').innerHTML =
     synTokens.map(s => '<span class="syn-chip">' + escapeHtml(s) + '</span>').join('');
