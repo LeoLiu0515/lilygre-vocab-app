@@ -569,8 +569,17 @@ function syncToggleUI() {
     if (el) el.setAttribute('aria-checked', String(!!PROGRESS.settings[key]));
   }
 }
+const TIER_VISIBILITY_KEYS = ['showNew', 'showImpress', 'showKnown'];
 function setSetting(key, val) {
   PROGRESS.settings[key] = val;
+  if (TIER_VISIBILITY_KEYS.includes(key)) {
+    // 關掉一類 = 當下就把它當「已會」看待,不用等到換輪才調整分母。
+    // 例如關掉「有印象」,配額跟本輪目標要立刻只照著還沒背的字重算,
+    // 不是每次標已會都重算(那樣配額會一直跳),但這是使用者主動切換的
+    // 明確動作,應該馬上生效。
+    ensureCycle();
+    PROGRESS.cycleTarget = quotaPool().length;
+  }
   saveProgress();
   syncToggleUI();
   renderHome();
@@ -579,7 +588,7 @@ function setSetting(key, val) {
     // 立刻套到眼前這張卡,不用等下一張
     session.flipped = val;
     document.getElementById('flashcard').classList.toggle('flipped', val);
-  } else if (inSession && (key === 'showNew' || key === 'showImpress' || key === 'showKnown')) {
+  } else if (inSession && TIER_VISIBILITY_KEYS.includes(key)) {
     refreshSessionQueue();
   }
   if (document.getElementById('view-stats').classList.contains('active')) renderStats();

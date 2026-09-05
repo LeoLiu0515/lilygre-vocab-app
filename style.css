@@ -145,7 +145,7 @@ html,body{
 .flashcard.flipped{transform:rotateY(180deg);}
 .card-face{
   position:absolute;inset:0;padding:28px 26px;
-  backface-visibility:hidden;display:flex;flex-direction:column;
+  -webkit-backface-visibility:hidden;backface-visibility:hidden;display:flex;flex-direction:column;
   background:var(--bg);
 }
 
@@ -168,19 +168,17 @@ html,body{
 /* 提示文字擺在操作鈕上方,兩個都置中,不會疊在一起 */
 .card-hint{position:absolute;bottom:112px;left:0;right:0;color:var(--ink-dim);font-size:11px;opacity:.65;letter-spacing:.05em;}
 
-/* 分類標籤:卡片左上角一個小圓點+字,一眼看出這張卡現在是哪一類。
-   「還沒背」不顯示(維持乾淨),不佔中央版面,文字由 tier class 帶出來,
-   不用另外寫 JS 塞文字。 */
+/* 分類標籤:卡片左上角一個純色小長條,一眼看出這張卡現在是哪一類,
+   「還沒背」不顯示(維持乾淨)。故意不放文字 —— 背面翻過去時 iOS Safari
+   的 backface-visibility 有時會透出一點鏡像殘影,純色色塊鏡像看起來
+   還是同一塊顏色,文字鏡像就會變成看得出來的反字,很明顯很醜。 */
 .tier-badge{
-  position:absolute;top:26px;left:26px;z-index:2;
-  display:none;align-items:center;gap:6px;
-  font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  position:absolute;top:28px;left:26px;z-index:2;
+  width:26px;height:6px;border-radius:3px;
+  display:none;background:transparent;
 }
-.tier-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor;flex-shrink:0;}
-#flashcard.tier-impress .tier-badge{display:flex;color:var(--sage);}
-#flashcard.tier-impress .tier-badge::after{content:'有印象';}
-#flashcard.tier-known .tier-badge{display:flex;color:var(--gold);}
-#flashcard.tier-known .tier-badge::after{content:'已會';}
+#flashcard.tier-impress .tier-badge{display:block;background:var(--sage);}
+#flashcard.tier-known .tier-badge{display:block;background:var(--gold);}
 
 /* 背面:條目排版 */
 .card-back{transform:rotateY(180deg);overflow-y:auto;align-items:stretch;justify-content:flex-start;-webkit-overflow-scrolling:touch;}
