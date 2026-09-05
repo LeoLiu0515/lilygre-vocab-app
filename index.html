@@ -87,11 +87,13 @@
       <div id="card-swiper">
       <div id="flashcard" class="flashcard">
         <div class="card-face card-front">
+          <div class="tier-badge"></div>
           <div class="card-word" id="card-word"></div>
           <div class="card-front-example" id="card-front-example"></div>
           <div class="card-hint">點卡片看解答 · 上滑看下一個</div>
         </div>
         <div class="card-face card-back">
+          <div class="tier-badge"></div>
           <div class="card-back-inner">
             <div class="card-word-row">
               <span class="card-word-small" id="card-word-back"></span>
@@ -115,8 +117,18 @@
       </div>
       </div>
       <div class="action-stack">
-        <button id="btn-impress" class="action-btn" title="有印象,但不確定會不會忘"><span class="action-ico">🤔</span><span class="action-label">有印象</span></button>
-        <button id="btn-archive" class="action-btn" title="已經會了"><span class="action-ico">✓</span><span class="action-label">已會</span></button>
+        <button id="btn-impress" class="action-btn" title="有印象,但不確定會不會忘">
+          <span class="action-circle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h9a1 1 0 0 1 1 1V20l-5.5-4-5.5 4V5.5a1 1 0 0 1 1-1z"/></svg>
+          </span>
+          <span class="action-label">有印象</span>
+        </button>
+        <button id="btn-archive" class="action-btn" title="已經會了">
+          <span class="action-circle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          </span>
+          <span class="action-label">已會</span>
+        </button>
       </div>
     </div>
   </section>

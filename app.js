@@ -550,6 +550,10 @@ function syncActionButtons() {
   const t = e ? tierOf(e.num) : TIER_NEW;
   document.getElementById('btn-impress').classList.toggle('on', t === TIER_IMPRESS);
   document.getElementById('btn-archive').classList.toggle('on', t === TIER_KNOWN);
+  // 卡面左邊那條分類色條(見 style.css 的 .card-face::before),還沒背不畫線
+  const card = document.getElementById('flashcard');
+  card.classList.toggle('tier-impress', t === TIER_IMPRESS);
+  card.classList.toggle('tier-known', t === TIER_KNOWN);
 }
 
 /* ---------- 設定(統計頁 + 背卡頁右上角面板共用同一組) ---------- */
