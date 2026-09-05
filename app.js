@@ -91,14 +91,19 @@ function tierVisible(tier) {
 function isVisible(num) { return tierVisible(tierOf(num)); }
 
 /* ---------- 每日配額 ----------
-   「今天該背幾張」= 還沒搞定的字 ÷ 7,標越多、配額越低,大約一週輪一遍整本。
-   已會的字不算進分母(即使 toggle 打開來複習也一樣)。 */
+   quotaPool = 目前還沒搞定(有印象 + 還沒背,分類有開)的字,已會不算進去
+   (即使 toggle 打開來複習也一樣)。這是「現在剩多少」的即時數字,用在首頁
+   顯示、抽卡範圍;每日配額本身不是每天拿這個數字重算,見下面 dailyQuota。 */
 function quotaPool() {
   return VOCAB_DATA.filter(e => tierOf(e.num) !== TIER_KNOWN && isVisible(e.num));
 }
+// 配額不能每天都用「現在還剩幾個」重算 —— 標一批已會,隔天配額就跳,
+// 感覺很不穩定。改成整個本輪(cycleTarget,見下面)只分配一次:
+// 本輪開始那天有多少字要搞定,就 ÷7 攤開來,輪次中途配額固定不變,
+// 換下一輪(ensureCycle)才會用新的剩餘量重新分配一次。
 function dailyQuota() {
-  const n = quotaPool().length;
-  return n ? Math.max(1, Math.ceil(n / WEEK_TARGET)) : 0;
+  ensureCycle();
+  return PROGRESS.cycleTarget ? Math.max(1, Math.ceil(PROGRESS.cycleTarget / WEEK_TARGET)) : 0;
 }
 // 今日計數「不會」自己跨日歸零 —— 半夜還在背被時鐘清掉很惱人。
 // 只有按首頁的「重設今日進度」才會重來。
