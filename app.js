@@ -449,12 +449,17 @@ function renderCard() {
   renderCardProgress();
 }
 
-// 進度條顯示「今天的配額進度」,中途退出再進來會接續
+// 頂端進度條 = 整份的進度:分母是「目前 toggle 開著的所有單字」,
+// 分子是其中已經背過(看過)的,現在這張卡剛看就算進去了,
+// 所以百分比大致就是「你走到整份的第幾個字」。
 function renderCardProgress() {
-  const t = todayStats();
-  document.getElementById('session-progress-fill').style.width = t.pct + '%';
-  document.getElementById('session-progress-count').textContent = `${t.done} / ${t.quota}`;
-  document.getElementById('session-progress-pct').textContent = t.pct + '%';
+  const visible = VOCAB_DATA.filter(e => isVisible(e.num));
+  const total = visible.length;
+  const done = visible.reduce((n, e) => n + (isSeen(e.num) ? 1 : 0), 0);
+  const pct = total ? Math.round(done / total * 100) : 0;
+  document.getElementById('session-progress-fill').style.width = pct + '%';
+  document.getElementById('session-progress-count').textContent = `${done} / ${total}`;
+  document.getElementById('session-progress-pct').textContent = pct + '%';
 }
 
 function escapeHtml(s) {
