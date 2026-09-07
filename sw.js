@@ -1,4 +1,4 @@
-const CACHE_NAME = 'lgv-cache-v25';
+const CACHE_NAME = 'lgv-cache-v26';
 const ASSETS = [
   './',
   './index.html',

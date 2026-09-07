@@ -449,16 +449,18 @@ function renderCard() {
   renderCardProgress();
 }
 
-// 頂端進度條 = 整份的進度:分母是「目前 toggle 開著的所有單字」,
-// 分子是其中已經背過(看過)的,現在這張卡剛看就算進去了,
-// 所以百分比大致就是「你走到整份的第幾個字」。
+// 頂端進度條 = 「現在這個字位在整份的哪裡」。
+// VOCAB_DATA 是照字根 A→Z 排的(num 1 是第一個字,最大的是最後一個),
+// 分母 = 目前 toggle 開著的所有單字,分子 = 目前這張卡在裡面排第幾。
+// 不是「看過幾個」—— 是位置,往後翻就往前推進。
 function renderCardProgress() {
-  const visible = VOCAB_DATA.filter(e => isVisible(e.num));
+  const e = currentEntry();
+  const visible = VOCAB_DATA.filter(x => isVisible(x.num));
   const total = visible.length;
-  const done = visible.reduce((n, e) => n + (isSeen(e.num) ? 1 : 0), 0);
-  const pct = total ? Math.round(done / total * 100) : 0;
+  const pos = e ? visible.filter(x => x.num <= e.num).length : 0;
+  const pct = total ? Math.round(pos / total * 100) : 0;
   document.getElementById('session-progress-fill').style.width = pct + '%';
-  document.getElementById('session-progress-count').textContent = `${done} / ${total}`;
+  document.getElementById('session-progress-count').textContent = `${pos} / ${total}`;
   document.getElementById('session-progress-pct').textContent = pct + '%';
 }
 
