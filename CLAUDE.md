@@ -40,14 +40,16 @@
 - 背卡頁右上角的齒輪面板 = 統計頁那幾個 toggle 的另一個入口,共用 `SETTING_SWITCHES` 清單。
 - 卡片正反面的「有印象／已會」動作鈕置底置中(`.action-stack`),兩隻手單手都按得到,**不要**改回貼單邊或加左右手設定 —— 這是使用者明確要求拿掉的功能。
 
-### 首頁圓環 = 本輪(週)進度,不是終身「已會多少」
+### 首頁圓環 + 背卡頁頂端進度條 = 今日份的進度
 
-使用者不想看「已會 X/1738」這種終身進度條。首頁圓環改成**本輪**(滾動 7 天窗口)背了幾個字:
-
-- `PROGRESS.cycleStart`(本輪開始日)、`cycleSeen`(本輪去重背過的 num)、`cycleTarget`(本輪開始那天 `quotaPool().length` 的快照,輪次中途不會因為標了幾個已會就縮水)。
-- `ensureCycle()`:超過 7 天自動換輪(不用手動按,換輪不會丟背誦紀錄,只是換一個全新計數,跟「每日配額」故意不自動歸零是不同考量)。
-- 每次 `renderCard()` 都會呼叫 `markSeenThisCycle(num)`,跟 `markSeenToday` 並行但邏輯獨立。
-- `overallStats()`(已會/有印象/還沒背的終身統計)還在,只是**只用在統計頁**的四宮格,首頁不再顯示。
+- 兩個都是 `todayStats()`:今日已背(`dailySeen.length`)/ 今天配額(`dailyQuota()`)。
+- **整份進度**只在首頁那一小條(`home-breakdown`)= `bookProgress()`:看過的「最後一個字」
+  在「toggle 開著的所有單字」裡排第幾(照 num / A→Z 順序),只往前不倒退。
+  使用者明確要求整份進度只要小小顯示,不要當主視覺。
+- `overallStats()`(已會/有印象/還沒背的終身統計)只用在統計頁四宮格。
+- 「輪次」(`cycleStart` / `cycleTarget` / `ensureCycle`)還在,但**只剩配額重分配**這一個
+  用途:每 7 天用當下 `quotaPool()` 快照重算 `cycleTarget`,`dailyQuota = cycleTarget ÷ 7`。
+  沒有任何 UI 顯示輪次。
 
 ## 記憶法(`mnemonic`)的撰寫規則
 

@@ -27,8 +27,7 @@ function defaultProgress() {
     dailyDate: null,     // 今日配額是哪一天的
     dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
     cycleStart: null,    // 本輪(週)從哪一天開始算
-    cycleSeen: [],        // 本輪已經背過的 num(去重)
-    cycleTarget: 0,       // 本輪開始那天,還沒搞定的字有幾個(當週目標)
+    cycleTarget: 0,       // 輪次開始那天 quotaPool 的快照,dailyQuota 拿它 ÷7
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -129,40 +128,34 @@ function todayStats() {
   return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
 }
 
-/* ---------- 本輪(一週一輪)進度 ----------
-   首頁不需要看「已會多少」的終身數字,要看的是「這一輪(這週)背了多少、
-   離下一輪還有幾天」。輪次是滾動的 7 天窗口,自動換輪 —— 不像每日配額
-   會卡在使用者手動按「重設」,因為換輪不會丟掉任何背誦紀錄,只是換一個
-   全新的計數,自動換也不會讓人不爽。 */
+/* ---------- 輪次(一週一輪)----------
+   輪次現在只剩一個用途:每 7 天把每日配額用當下的剩餘量重新分配一次
+   (cycleTarget = quotaPool 快照,dailyQuota 拿它 ÷7)。滾動的 7 天窗口,
+   自動換輪 —— 換輪不會丟掉任何背誦紀錄,只是重算配額,所以自動換沒差。 */
 function ensureCycle() {
   const today = todayStr();
   if (!PROGRESS.cycleStart) {
     PROGRESS.cycleStart = today;
-    PROGRESS.cycleSeen = [];
     PROGRESS.cycleTarget = quotaPool().length;
     saveProgress();
     return;
   }
   if (daysBetween(PROGRESS.cycleStart, today) >= WEEK_TARGET) {
     PROGRESS.cycleStart = today;
-    PROGRESS.cycleSeen = [];
     PROGRESS.cycleTarget = quotaPool().length;
     saveProgress();
   }
 }
-function markSeenThisCycle(num) {
-  ensureCycle();
-  if (!PROGRESS.cycleSeen.includes(num)) {
-    PROGRESS.cycleSeen.push(num);
-    saveProgress();
-  }
-}
-function cycleStats() {
-  ensureCycle();
-  const done = PROGRESS.cycleSeen.length;
-  const target = Math.max(PROGRESS.cycleTarget || 0, done);
-  const daysLeft = Math.max(0, WEEK_TARGET - daysBetween(PROGRESS.cycleStart, todayStr()));
-  return { done, target, daysLeft, pct: target ? Math.min(100, Math.round(done / target * 100)) : 0 };
+
+// 整份進度(給首頁那一小條用):走到整份 A→Z 的哪裡了 = 看過的最後一個字
+// 在「toggle 開著的所有單字」裡排第幾。只會往前不會倒退。
+function bookProgress() {
+  const visible = VOCAB_DATA.filter(x => isVisible(x.num));
+  const total = visible.length;
+  let maxNum = 0;
+  for (const x of visible) if (x.num > maxNum && isSeen(x.num)) maxNum = x.num;
+  const pos = visible.filter(x => x.num <= maxNum).length;
+  return { pos, total, pct: total ? Math.round(pos / total * 100) : 0 };
 }
 
 /* ---------- cross-device sync (GitHub Gist as backend) ---------- */
@@ -345,18 +338,20 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  const cy = cycleStats();
-  const remaining = quotaPool().length;
   const t = todayStats();
+  const book = bookProgress();
+  const remaining = quotaPool().length;
 
+  // 大圓圈 = 今日份的進度(已背 / 今天配額)
   const circ = 326.7256;
-  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - cy.pct / 100));
-  document.getElementById('ring-pct').textContent = cy.pct + '%';
-  document.getElementById('ring-count').textContent = `本輪已背 ${cy.done} / ${cy.target}`;
+  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - t.pct / 100));
+  document.getElementById('ring-pct').textContent = t.pct + '%';
+  document.getElementById('ring-count').textContent = `今日 ${t.done} / ${t.quota}`;
 
+  // 小小一條 = 整份進度
   document.getElementById('home-breakdown').innerHTML =
-    `<span>還沒搞定<b>${remaining}</b></span>` +
-    `<span>距離下一輪<b>${cy.daysLeft}</b>天</span>`;
+    `<span>整份<b>${book.pct}</b>%</span>` +
+    `<span>還沒搞定<b>${remaining}</b>字</span>`;
 
   document.getElementById('stat-due').textContent = t.done;
   document.getElementById('stat-new').textContent = Math.max(0, t.quota - t.done);
@@ -445,23 +440,15 @@ function renderCard() {
   syncActionButtons();
   exposeWord(e.num);      // 看過即標記
   markSeenToday(e.num);   // 算進今天的配額
-  markSeenThisCycle(e.num); // 算進這一輪(這週)背過的字
   renderCardProgress();
 }
 
-// 頂端進度條 = 「現在這個字位在整份的哪裡」。
-// VOCAB_DATA 是照字根 A→Z 排的(num 1 是第一個字,最大的是最後一個),
-// 分母 = 目前 toggle 開著的所有單字,分子 = 目前這張卡在裡面排第幾。
-// 不是「看過幾個」—— 是位置,往後翻就往前推進。
+// 背卡頁頂端進度條 = 今日份的進度(已背 / 今天配額),中途退出再進來會接續
 function renderCardProgress() {
-  const e = currentEntry();
-  const visible = VOCAB_DATA.filter(x => isVisible(x.num));
-  const total = visible.length;
-  const pos = e ? visible.filter(x => x.num <= e.num).length : 0;
-  const pct = total ? Math.round(pos / total * 100) : 0;
-  document.getElementById('session-progress-fill').style.width = pct + '%';
-  document.getElementById('session-progress-count').textContent = `${pos} / ${total}`;
-  document.getElementById('session-progress-pct').textContent = pct + '%';
+  const t = todayStats();
+  document.getElementById('session-progress-fill').style.width = t.pct + '%';
+  document.getElementById('session-progress-count').textContent = `今日 ${t.done} / ${t.quota}`;
+  document.getElementById('session-progress-pct').textContent = t.pct + '%';
 }
 
 function escapeHtml(s) {
