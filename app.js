@@ -122,9 +122,18 @@ function markSeenToday(num) {
     saveProgress();
   }
 }
+// 今天還抓得到幾張:分類有開、今天還沒背過的字
+function availableTodayCount() {
+  const doneToday = new Set(PROGRESS.dailySeen || []);
+  return VOCAB_DATA.reduce((n, e) => n + (isVisible(e.num) && !doneToday.has(e.num) ? 1 : 0), 0);
+}
 function todayStats() {
-  const quota = dailyQuota();
   const done = dailyDone();
+  // 配額是快照(cycleTarget ÷ 7),但如果剩下的字根本不夠一天配額,
+  // 分母就縮成「已背 + 今天還抓得到的」—— 不然整本快背完的時候,
+  // 一批背光了進度條卻卡在一半,會覺得莫名其妙。
+  const base = dailyQuota();
+  const quota = base ? Math.max(1, Math.min(base, done + availableTodayCount())) : 0;
   return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
 }
 
@@ -370,7 +379,7 @@ function isArchived(num) { return !!getState(num).archived; }
    沒看過的排前面、看過的排後面(方便一週一輪);開了隨機順序就各自打亂。
    已算進今日份量的字會跳過,所以中途退出再進來是接續、不是重來。 */
 function buildQueue(need) {
-  need = need || Math.max(0, dailyQuota() - dailyDone());
+  need = need || Math.max(0, todayStats().quota - dailyDone());
   if (need <= 0) return [];
   const doneToday = new Set(PROGRESS.dailySeen || []);
   const pool = VOCAB_DATA.filter(e => isVisible(e.num) && !doneToday.has(e.num));
@@ -634,13 +643,15 @@ function finishSession() {
   const remaining = quotaPool().length;
   const known = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_KNOWN).length;
   const impress = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_IMPRESS).length;
+  // 只有真的背完今天的份量才慶祝;半路一批看完了就低調帶過
   const hit = t.done >= t.quota;
+  document.getElementById('done-emoji').textContent = hit ? '🎉' : '👍';
+  document.getElementById('done-title').textContent = hit ? '今天的份量完成了！' : '這一批先到這';
   document.getElementById('done-stats').innerHTML =
-    (hit ? '今天的份量完成了！' : '這一批看完了！') +
-    `<br><br>今日進度 <b>${t.done}/${t.quota}</b> 張` +
-    `<br>還沒搞定 <b>${remaining}</b> 字（照這個速度 ${Math.ceil(remaining / Math.max(1, t.quota))} 天輪一遍）` +
+    `今日進度 <b>${t.done} / ${t.quota}</b> 張` +
+    (hit ? '' : `<br>再 <b>${Math.max(0, t.quota - t.done)}</b> 張就到今天的目標了`) +
+    `<br>整份還沒搞定 <b>${remaining}</b> 字` +
     `<br>✓ 已會 <b>${known}</b> ・ 🤔 有印象 <b>${impress}</b>`;
-  // 還想多背就再抓一批同樣份量的
   document.getElementById('btn-done-next').style.display = remaining ? '' : 'none';
   showView('view-done');
 }
@@ -822,6 +833,7 @@ document.getElementById('btn-speak').onclick = (ev) => {
 
 // 「繼續下一批」:再抓一批跟今日配額一樣多的字(超出配額也照跑)
 document.getElementById('btn-done-next').onclick = () => {
+  // 再抓一批,份量跟今天配額一樣(buildQueue 內部本來就會被「還抓得到的量」卡住)
   const q = buildQueue(dailyQuota());
   if (q.length === 0) { showView('view-home'); renderHome(); return; }
   session = { queue: q, idx: 0, flipped: false };

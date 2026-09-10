@@ -257,6 +257,8 @@ html,body{
 .done-emoji{font-size:52px;}
 .done-title{font-family:var(--serif);font-size:28px;font-weight:700;}
 .done-stats{color:var(--ink-dim);font-size:14.5px;line-height:1.7;margin-bottom:14px;}
+/* .secondary-btn 有 flex:1(給 .backup-row 那種橫排用),完成頁是直排會被撐很長 */
+.done-stage .secondary-btn{flex:none;}
 
 /* ---------- 統計 ---------- */
 .stats-body{padding:0 20px 34px;}

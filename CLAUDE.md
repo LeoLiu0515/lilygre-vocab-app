@@ -31,12 +31,16 @@
 - 每個字屬於三類之一,存在 `PROGRESS.words[num]`:`archived`=已會、`impress`=有印象、都沒有=還沒背。
   **`archived` 是舊的封存旗標,絕對不能改寫或搬移**(使用者說過 "can't afford 重新 archive")。
 - `settings.showNew / showImpress / showKnown` 決定哪幾類會出現在單字卡。預設「已會」關著。
-- 每日配額 = `cycleTarget ÷ 7`。輪次中途**標分類**(archive/impress)不會讓配額跳動,
-  只有換輪(`ensureCycle`)才重算 —— 不要改回用即時 `quotaPool()` 重算。
-  但**切換分類 toggle**(showNew/showImpress/showKnown)是例外:那是使用者主動的
-  明確動作,`setSetting` 裡會立刻重算 `cycleTarget = quotaPool()`,不用等換輪。
-  關掉某個 toggle 等於把那個分類當下就當「已會」看待。
-  今日計數 `dailySeen` **不會自己跨日歸零**,只有首頁「重設今日進度」才清。
+- 每日配額 raw = `cycleTarget ÷ 7`(cycleTarget 是輪次開始的 `quotaPool()` 快照)。
+  輪次中途標分類不會讓 raw 跳動,只有換輪(`ensureCycle`)或切分類 toggle
+  (`setSetting` 裡立刻重算 `cycleTarget = quotaPool()`)才變。
+- **`todayStats().quota` 才是實際顯示/用的配額** = `min(raw, 已背 + 今天還抓得到的字)`。
+  這一層很重要:整本快背完的時候,剩下的字可能不夠一天 raw 配額,如果不夾住,
+  一批背光了進度條卻卡在一半、還跳「這回合完成」—— 這是修過的 bug,不要拿掉這個 min。
+  正常情況(還有一大堆字)`todayStats().quota === raw`,不會亂跳。
+- `finishSession` 只有 `done >= todayStats().quota` 才顯示「🎉 今天的份量完成了」,
+  否則低調顯示「👍 這一批先到這」。`#done-title` / `#done-emoji` 由 JS 動態設定。
+- 今日計數 `dailySeen` **不會自己跨日歸零**,只有首頁「重設今日進度」才清。
 - 背卡頁右上角的齒輪面板 = 統計頁那幾個 toggle 的另一個入口,共用 `SETTING_SWITCHES` 清單。
 - 卡片正反面的「有印象／已會」動作鈕置底置中(`.action-stack`),兩隻手單手都按得到,**不要**改回貼單邊或加左右手設定 —— 這是使用者明確要求拿掉的功能。
 
