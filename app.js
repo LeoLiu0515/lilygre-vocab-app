@@ -7,9 +7,14 @@ const WEEK_TARGET = 7;
 const byNum = {};
 for (const e of VOCAB_DATA) byNum[e.num] = e;
 
+// 「今天」一律用台灣時間、凌晨 4 點才換日(不是使用者手機所在時區的午夜)。
+// 用絕對時間軸算,跟裝置時區無關:把「現在」平移成台灣時間,再把 4 點當成
+// 那一天的起點往回推,取日期部分就是這套換日規則下的「今天」。
 function todayStr() {
-  const d = new Date();
-  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const TAIWAN_OFFSET_MS = 8 * 3600000;
+  const DAY_START_OFFSET_MS = 4 * 3600000;
+  const d = new Date(Date.now() + TAIWAN_OFFSET_MS - DAY_START_OFFSET_MS);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
 }
 function daysBetween(a, b) {
   const da = new Date(a + 'T00:00:00');
@@ -110,8 +115,8 @@ function dailyQuota() {
   ensureCycle();
   return PROGRESS.cycleTarget ? Math.max(1, Math.ceil(PROGRESS.cycleTarget / WEEK_TARGET)) : 0;
 }
-// 今日計數「不會」自己跨日歸零 —— 半夜還在背被時鐘清掉很惱人。
-// 只有按首頁的「重設今日進度」才會重來。
+// 換日(見 ensureDailyRollover)會自動歸零,這顆按鈕是「現在就要」的手動版 ——
+// 例如今天配額已經達標,還想提前開始明天的份量。
 function startNewDay() {
   recordDailyHistory(); // 歸零前先把今天最後的成績存進歷史
   PROGRESS.dailyDate = todayStr();
@@ -148,13 +153,31 @@ function todayStats() {
 // 把「今天」的成績寫進歷史,給首頁「近七天」用。每次背了字、或按重設前都存一次,
 // 所以就算使用者從來不管「重設今日進度」,前一天最後的樣子還是留得住。
 // 只留最近 30 天,存檔不會無限長大。
-function recordDailyHistory() {
+function recordDailyHistory(dateKey) {
   const t = todayStats();
   if (!PROGRESS.dailyHistory) PROGRESS.dailyHistory = {};
-  PROGRESS.dailyHistory[todayStr()] = { done: t.done, quota: t.quota };
+  PROGRESS.dailyHistory[dateKey || todayStr()] = { done: t.done, quota: t.quota };
   const keys = Object.keys(PROGRESS.dailyHistory).sort();
   if (keys.length > 30) {
     for (const k of keys.slice(0, keys.length - 30)) delete PROGRESS.dailyHistory[k];
+  }
+}
+
+// 換日了(照台灣凌晨 4 點算)就自動把今天的計數歸零、跳到下一天 ——
+// 不用等使用者自己按「重設今日進度」。只在回首頁/開始背單字時檢查,
+// 不會在背卡背到一半時把畫面抽換掉。
+function ensureDailyRollover() {
+  const today = todayStr();
+  if (!PROGRESS.dailyDate) {
+    PROGRESS.dailyDate = today;
+    saveProgress();
+    return;
+  }
+  if (PROGRESS.dailyDate !== today) {
+    recordDailyHistory(PROGRESS.dailyDate); // 把剛結束那天的最終成績存進歷史,再歸零
+    PROGRESS.dailySeen = [];
+    PROGRESS.dailyDate = today;
+    saveProgress();
   }
 }
 
@@ -368,6 +391,7 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
+  ensureDailyRollover();
   const t = todayStats();
   const book = bookProgress();
   const remaining = quotaPool().length;
@@ -443,6 +467,7 @@ function buildQueue(need) {
 }
 
 function startSession() {
+  ensureDailyRollover();
   syncToggleUI();
   const q = buildQueue();
   session = { queue: q, idx: 0, flipped: false };

@@ -40,7 +40,13 @@
   正常情況(還有一大堆字)`todayStats().quota === raw`,不會亂跳。
 - `finishSession` 只有 `done >= todayStats().quota` 才顯示「🎉 今天的份量完成了」,
   否則低調顯示「👍 這一批先到這」。`#done-title` / `#done-emoji` 由 JS 動態設定。
-- 今日計數 `dailySeen` **不會自己跨日歸零**,只有首頁「重設今日進度」才清。
+- **「今天」= 台灣時間凌晨 4 點才換日**,不是裝置時區的午夜。`todayStr()` 用絕對時間軸
+  (`Date.now()`)算,跟裝置所在時區無關 —— 不要改回 `new Date().getFullYear()...` 那種
+  吃裝置本地時間的寫法。
+- 換日會自動觸發(`ensureDailyRollover()`,在 `renderHome()` / `startSession()` 呼叫):
+  `dailySeen` 自動歸零、把剛結束那天的成績存進 `dailyHistory`。**只在回首頁 / 開始背單字
+  時檢查**,不會在背卡背到一半時把畫面抽換掉(`renderCard`/`markSeenToday` 故意不呼叫它)。
+  首頁「重設今日進度」按鈕還在,是手動提前開始下一天的選項,不是唯一的換日方式了。
 
 ### 首頁「近七天」
 
