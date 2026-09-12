@@ -41,6 +41,15 @@
 - `finishSession` 只有 `done >= todayStats().quota` 才顯示「🎉 今天的份量完成了」,
   否則低調顯示「👍 這一批先到這」。`#done-title` / `#done-emoji` 由 JS 動態設定。
 - 今日計數 `dailySeen` **不會自己跨日歸零**,只有首頁「重設今日進度」才清。
+
+### 首頁「近七天」
+
+- `PROGRESS.dailyHistory`:`{ 'YYYY-MM-DD': {done, quota} }`,只留最近 30 天。
+- `recordDailyHistory()` 在 `markSeenToday`(每背一個新字)和 `startNewDay`(歸零前)
+  都會呼叫,所以就算使用者從來不按「重設」,前一天最後的樣子也留得住。
+- `renderWeekStrip()`:近 7 天一排小圈,今天用 `todayStats()` 即時值,過去 6 天讀
+  `dailyHistory`,沒紀錄的那天(沒開 app)就是空圈。達標(`done>=quota`)顯示打勾,
+  沒達標顯示完成比例的弧,兩者都沒有的話代表那天完全沒背。
 - 背卡頁右上角的齒輪面板 = 統計頁那幾個 toggle 的另一個入口,共用 `SETTING_SWITCHES` 清單。
 - 卡片正反面的「有印象／已會」動作鈕置底置中(`.action-stack`),兩隻手單手都按得到,**不要**改回貼單邊或加左右手設定 —— 這是使用者明確要求拿掉的功能。
 

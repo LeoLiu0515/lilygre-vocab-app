@@ -16,6 +16,11 @@ function daysBetween(a, b) {
   const db = new Date(b + 'T00:00:00');
   return Math.round((db - da) / 86400000);
 }
+function addDaysStr(dateStr, delta) {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + delta);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
 function defaultProgress() {
   return {
     words: {},          // num -> {box, due, reps, lapses, seen}
@@ -26,6 +31,7 @@ function defaultProgress() {
     settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
     dailyDate: null,     // 今日配額是哪一天的
     dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
+    dailyHistory: {},    // 'YYYY-MM-DD' -> {done, quota},給首頁「近七天」用
     cycleStart: null,    // 本輪(週)從哪一天開始算
     cycleTarget: 0,       // 輪次開始那天 quotaPool 的快照,dailyQuota 拿它 ÷7
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
@@ -107,6 +113,7 @@ function dailyQuota() {
 // 今日計數「不會」自己跨日歸零 —— 半夜還在背被時鐘清掉很惱人。
 // 只有按首頁的「重設今日進度」才會重來。
 function startNewDay() {
+  recordDailyHistory(); // 歸零前先把今天最後的成績存進歷史
   PROGRESS.dailyDate = todayStr();
   PROGRESS.dailySeen = [];
   saveProgress();
@@ -119,6 +126,7 @@ function markSeenToday(num) {
   if (!PROGRESS.dailySeen) PROGRESS.dailySeen = [];
   if (!PROGRESS.dailySeen.includes(num)) {
     PROGRESS.dailySeen.push(num);
+    recordDailyHistory();
     saveProgress();
   }
 }
@@ -135,6 +143,19 @@ function todayStats() {
   const base = dailyQuota();
   const quota = base ? Math.max(1, Math.min(base, done + availableTodayCount())) : 0;
   return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
+}
+
+// 把「今天」的成績寫進歷史,給首頁「近七天」用。每次背了字、或按重設前都存一次,
+// 所以就算使用者從來不管「重設今日進度」,前一天最後的樣子還是留得住。
+// 只留最近 30 天,存檔不會無限長大。
+function recordDailyHistory() {
+  const t = todayStats();
+  if (!PROGRESS.dailyHistory) PROGRESS.dailyHistory = {};
+  PROGRESS.dailyHistory[todayStr()] = { done: t.done, quota: t.quota };
+  const keys = Object.keys(PROGRESS.dailyHistory).sort();
+  if (keys.length > 30) {
+    for (const k of keys.slice(0, keys.length - 30)) delete PROGRESS.dailyHistory[k];
+  }
 }
 
 /* ---------- 輪次(一週一輪)----------
@@ -368,6 +389,38 @@ function renderHome() {
 
   document.getElementById('home-quota-note').textContent =
     remaining ? `今天配額 ${t.quota} 張` : '整本都搞定了 🎉';
+
+  renderWeekStrip(t);
+}
+
+// 近七天:每天一個小圈,達標打勾、沒達標就畫出完成了幾分之幾的弧。
+// 今天用即時數字(不用等存進歷史),過去六天讀 dailyHistory,沒紀錄就是空的。
+function renderWeekStrip(todayLive) {
+  const wrap = document.getElementById('week-strip');
+  if (!wrap) return;
+  const hist = PROGRESS.dailyHistory || {};
+  const WD = ['日', '一', '二', '三', '四', '五', '六'];
+  const CIRC = 81.68; // 2π×13,跟 .week-ring-fg 的半徑對應
+  let html = '';
+  for (let i = 6; i >= 0; i--) {
+    const d = addDaysStr(todayStr(), -i);
+    const rec = i === 0 ? todayLive : (hist[d] || { done: 0, quota: 0 });
+    const pct = rec.quota ? Math.min(1, rec.done / rec.quota) : 0;
+    const hit = rec.quota > 0 && rec.done >= rec.quota;
+    const label = i === 0 ? '今天' : WD[new Date(d + 'T00:00:00').getDay()];
+    html +=
+      `<div class="week-day${i === 0 ? ' today' : ''}">` +
+        `<div class="week-ring-wrap">` +
+          `<svg viewBox="0 0 32 32" class="week-ring">` +
+            `<circle cx="16" cy="16" r="13" class="week-ring-bg"/>` +
+            `<circle cx="16" cy="16" r="13" class="week-ring-fg" style="stroke-dashoffset:${CIRC * (1 - pct)}"/>` +
+          `</svg>` +
+          (hit ? `<svg class="week-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg>` : '') +
+        `</div>` +
+        `<span class="week-day-label">${label}</span>` +
+      `</div>`;
+  }
+  wrap.innerHTML = html;
 }
 
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */

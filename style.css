@@ -83,6 +83,25 @@ html,body{
 .stat-chip span{display:block;font-family:var(--serif);font-size:24px;font-weight:700;}
 .stat-chip label{font-size:11px;color:var(--ink-dim);letter-spacing:.06em;}
 
+/* 近七天:每天一個小圈,達標打勾、沒達標就畫出完成了幾分之幾的弧 */
+.week-section{padding:18px 20px 4px;}
+.week-label{font-size:10px;color:var(--ink-dim);letter-spacing:.16em;text-transform:uppercase;margin-bottom:12px;}
+.week-row{display:flex;justify-content:space-between;}
+.week-day{display:flex;flex-direction:column;align-items:center;gap:7px;}
+.week-ring-wrap{position:relative;width:32px;height:32px;}
+.week-ring{width:32px;height:32px;transform:rotate(-90deg);}
+.week-ring-bg{fill:none;stroke:var(--surface2);stroke-width:3;}
+.week-ring-fg{
+  fill:none;stroke:var(--gold);stroke-width:3;stroke-linecap:round;
+  stroke-dasharray:81.68;transition:stroke-dashoffset .4s cubic-bezier(.2,.8,.3,1);
+}
+.week-check{
+  position:absolute;inset:0;margin:auto;width:16px;height:16px;
+  fill:none;stroke:var(--gold);stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round;
+}
+.week-day-label{font-size:9.5px;color:var(--ink-dim);letter-spacing:.02em;}
+.week-day.today .week-day-label{color:var(--gold);font-weight:700;}
+
 .cta-btn{
   margin:24px 20px 12px;padding:17px;border:none;border-radius:999px;
   background:var(--gold);
