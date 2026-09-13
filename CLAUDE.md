@@ -40,9 +40,10 @@
   正常情況(還有一大堆字)`todayStats().quota === raw`,不會亂跳。
 - `finishSession` 只有 `done >= todayStats().quota` 才顯示「🎉 今天的份量完成了」,
   否則低調顯示「👍 這一批先到這」。`#done-title` / `#done-emoji` 由 JS 動態設定。
-- **「今天」= 台灣時間凌晨 4 點才換日**,不是裝置時區的午夜。`todayStr()` 用絕對時間軸
-  (`Date.now()`)算,跟裝置所在時區無關 —— 不要改回 `new Date().getFullYear()...` 那種
-  吃裝置本地時間的寫法。
+- **「今天」= 裝置本地時間凌晨 4 點才換日**,不是午夜。`todayStr()` = `Date.now() - 4h`
+  再取本地日期。**不要寫死時區**(例如台灣 UTC+8)—— 試過一次,使用者人在國外時
+  裝置時區跟台灣差了大半天,近七天那排圓圈整個錯位、星期幾對不上他實際背的
+  那天,這是修過的 bug。
 - 換日會自動觸發(`ensureDailyRollover()`,在 `renderHome()` / `startSession()` 呼叫):
   `dailySeen` 自動歸零、把剛結束那天的成績存進 `dailyHistory`。**只在回首頁 / 開始背單字
   時檢查**,不會在背卡背到一半時把畫面抽換掉(`renderCard`/`markSeenToday` 故意不呼叫它)。

@@ -7,14 +7,15 @@ const WEEK_TARGET = 7;
 const byNum = {};
 for (const e of VOCAB_DATA) byNum[e.num] = e;
 
-// 「今天」一律用台灣時間、凌晨 4 點才換日(不是使用者手機所在時區的午夜)。
-// 用絕對時間軸算,跟裝置時區無關:把「現在」平移成台灣時間,再把 4 點當成
-// 那一天的起點往回推,取日期部分就是這套換日規則下的「今天」。
+// 「今天」用裝置本地時間、凌晨 4 點才換日(不是午夜)。
+// 曾經試過寫死台灣時區(UTC+8),但使用者人在國外(裝置是當地時區)時,
+// 台灣的凌晨 4 點跟他自己感覺的「今天」差了大半天,近七天那排圓圈會整個
+// 錯位、星期幾對不上他實際背的那天 —— 這是修過的 bug,不要再寫死時區。
+// 用「現在時間 - 4 小時」取本地日期,不管裝置在哪個時區都對得上使用者自己的一天。
 function todayStr() {
-  const TAIWAN_OFFSET_MS = 8 * 3600000;
   const DAY_START_OFFSET_MS = 4 * 3600000;
-  const d = new Date(Date.now() + TAIWAN_OFFSET_MS - DAY_START_OFFSET_MS);
-  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  const d = new Date(Date.now() - DAY_START_OFFSET_MS);
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
 }
 function daysBetween(a, b) {
   const da = new Date(a + 'T00:00:00');
