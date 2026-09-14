@@ -1,8 +1,9 @@
 /* ---------- storage & state ---------- */
 const STORAGE_KEY = 'lgv_progress_v2';
-// 配額用:目標一週把「還沒搞定」的字輪一遍。沒有實體的「第幾天」分頁了 —— 整本
-// 就是一份 1738 字,配額只是把它切成七等份,標越多、每份越小。
-const WEEK_TARGET = 7;
+// 一份的配額 = 目前還沒搞定的字 ÷ 7,即時算,標越多、每份越小。
+// 沒有「第幾天」也沒有「今天」了 —— 這是一份一份的份量,不是跟著日曆走的每日目標,
+// 背完一份馬上就能開始下一份,不用等隔天。
+const QUOTA_DIVISOR = 7;
 
 const byNum = {};
 for (const e of VOCAB_DATA) byNum[e.num] = e;
@@ -35,11 +36,10 @@ function defaultProgress() {
     // showNew / showImpress / showKnown:三個分類要不要出現在單字卡。
     // 預設「已會」關著,跟舊版「封存的字永不出現」行為一致。
     settings: { defaultFlipped: false, shuffleOrder: false, showNew: true, showImpress: true, showKnown: false },
-    dailyDate: null,     // 今日配額是哪一天的
-    dailySeen: [],       // 今天已經看過的 num,換日歸零(重進 app 不會重算)
+    dailySeen: [],       // 這一份已經背過的 num,只有手動「開始下一份」才會清空
+    calDate: null,       // calSeen 是哪一個(日曆)天的,只給「近七天」統計用
+    calSeen: [],         // 今天(日曆天,本地凌晨 4 點換日)背過的 num,跟上面的「份」無關
     dailyHistory: {},    // 'YYYY-MM-DD' -> {done, quota},給首頁「近七天」用
-    cycleStart: null,    // 本輪(週)從哪一天開始算
-    cycleTarget: 0,       // 輪次開始那天 quotaPool 的快照,dailyQuota 拿它 ÷7
     updatedAt: 0,        // ms epoch, bumped on every save; used for cross-device merge
   };
 }
@@ -101,26 +101,22 @@ function tierVisible(tier) {
 }
 function isVisible(num) { return tierVisible(tierOf(num)); }
 
-/* ---------- 每日配額 ----------
-   quotaPool = 目前還沒搞定(有印象 + 還沒背,分類有開)的字,已會不算進去
-   (即使 toggle 打開來複習也一樣)。這是「現在剩多少」的即時數字,用在首頁
-   顯示、抽卡範圍;每日配額本身不是每天拿這個數字重算,見下面 dailyQuota。 */
+/* ---------- 一份的配額 ----------
+   quotaPool = 目前還沒搞定的字:有印象 + 還沒背,只算分類 toggle 有開的
+   那些,已會永遠不算進去(即使打開 toggle 複習也一樣)。這是即時數字,
+   關掉「有印象」就只剩「還沒背」,兩個都開就是兩個加起來 —— 配額
+   (quotaPool ÷ 7)每次都拿這個現算,不是哪一天的快照,標分類、切
+   toggle 當下就會反映在配額上。 */
 function quotaPool() {
   return VOCAB_DATA.filter(e => tierOf(e.num) !== TIER_KNOWN && isVisible(e.num));
 }
-// 配額不能每天都用「現在還剩幾個」重算 —— 標一批已會,隔天配額就跳,
-// 感覺很不穩定。改成整個本輪(cycleTarget,見下面)只分配一次:
-// 本輪開始那天有多少字要搞定,就 ÷7 攤開來,輪次中途配額固定不變,
-// 換下一輪(ensureCycle)才會用新的剩餘量重新分配一次。
-function dailyQuota() {
-  ensureCycle();
-  return PROGRESS.cycleTarget ? Math.max(1, Math.ceil(PROGRESS.cycleTarget / WEEK_TARGET)) : 0;
+function roundQuota() {
+  const n = quotaPool().length;
+  return n ? Math.max(1, Math.ceil(n / QUOTA_DIVISOR)) : 0;
 }
-// 換日(見 ensureDailyRollover)會自動歸零,這顆按鈕是「現在就要」的手動版 ——
-// 例如今天配額已經達標,還想提前開始明天的份量。
-function startNewDay() {
-  recordDailyHistory(); // 歸零前先把今天最後的成績存進歷史
-  PROGRESS.dailyDate = todayStr();
+// 這一份背完、或想放棄重來,就按這個手動開始下一份 —— 沒有「日期」這回事,
+// 想開幾份就開幾份,不用等隔天。
+function startNextRound() {
   PROGRESS.dailySeen = [];
   saveProgress();
   renderHome();
@@ -128,76 +124,43 @@ function startNewDay() {
 function dailyDone() {
   return (PROGRESS.dailySeen || []).length;
 }
-function markSeenToday(num) {
+function markSeenThisRound(num) {
   if (!PROGRESS.dailySeen) PROGRESS.dailySeen = [];
   if (!PROGRESS.dailySeen.includes(num)) {
     PROGRESS.dailySeen.push(num);
-    recordDailyHistory();
     saveProgress();
   }
 }
-// 今天還抓得到幾張:分類有開、今天還沒背過的字
-function availableTodayCount() {
-  const doneToday = new Set(PROGRESS.dailySeen || []);
-  return VOCAB_DATA.reduce((n, e) => n + (isVisible(e.num) && !doneToday.has(e.num) ? 1 : 0), 0);
-}
-function todayStats() {
+function roundStats() {
+  const quota = roundQuota();
   const done = dailyDone();
-  // 配額是快照(cycleTarget ÷ 7),但如果剩下的字根本不夠一天配額,
-  // 分母就縮成「已背 + 今天還抓得到的」—— 不然整本快背完的時候,
-  // 一批背光了進度條卻卡在一半,會覺得莫名其妙。
-  const base = dailyQuota();
-  const quota = base ? Math.max(1, Math.min(base, done + availableTodayCount())) : 0;
   return { quota, done, pct: quota ? Math.min(100, Math.round(done / quota * 100)) : 0 };
 }
 
-// 把「今天」的成績寫進歷史,給首頁「近七天」用。每次背了字、或按重設前都存一次,
-// 所以就算使用者從來不管「重設今日進度」,前一天最後的樣子還是留得住。
+/* ---------- 日曆天統計(只給「近七天」用,跟上面的「份」完全獨立)----------
+   使用者不要「每日進度」跟到日期的自動重設了,一份要背多少、什麼時候開始
+   下一份全部是手動的。但「近七天有沒有練到」這種歷史紀錄還是有用,所以另外
+   用 calSeen/calDate 記録「今天(日曆天)背過幾個字」,在背景自己跨日曆天
+   歸零 —— 這只影響歷史顯示,不影響、也不會打斷正在背的那一份。 */
+function markSeenToday(num) {
+  const today = todayStr();
+  if (PROGRESS.calDate && PROGRESS.calDate !== today) {
+    recordDailyHistory(PROGRESS.calDate); // 把剛結束那天的最終次數存進歷史,再歸零
+    PROGRESS.calSeen = [];
+  }
+  PROGRESS.calDate = today;
+  if (!PROGRESS.calSeen) PROGRESS.calSeen = [];
+  if (!PROGRESS.calSeen.includes(num)) PROGRESS.calSeen.push(num);
+  recordDailyHistory();
+}
+// 把「今天(日曆天)」背了幾個字寫進歷史,配額用當下即時的 roundQuota 當參考值。
 // 只留最近 30 天,存檔不會無限長大。
 function recordDailyHistory(dateKey) {
-  const t = todayStats();
   if (!PROGRESS.dailyHistory) PROGRESS.dailyHistory = {};
-  PROGRESS.dailyHistory[dateKey || todayStr()] = { done: t.done, quota: t.quota };
+  PROGRESS.dailyHistory[dateKey || todayStr()] = { done: (PROGRESS.calSeen || []).length, quota: roundQuota() };
   const keys = Object.keys(PROGRESS.dailyHistory).sort();
   if (keys.length > 30) {
     for (const k of keys.slice(0, keys.length - 30)) delete PROGRESS.dailyHistory[k];
-  }
-}
-
-// 換日了(照台灣凌晨 4 點算)就自動把今天的計數歸零、跳到下一天 ——
-// 不用等使用者自己按「重設今日進度」。只在回首頁/開始背單字時檢查,
-// 不會在背卡背到一半時把畫面抽換掉。
-function ensureDailyRollover() {
-  const today = todayStr();
-  if (!PROGRESS.dailyDate) {
-    PROGRESS.dailyDate = today;
-    saveProgress();
-    return;
-  }
-  if (PROGRESS.dailyDate !== today) {
-    recordDailyHistory(PROGRESS.dailyDate); // 把剛結束那天的最終成績存進歷史,再歸零
-    PROGRESS.dailySeen = [];
-    PROGRESS.dailyDate = today;
-    saveProgress();
-  }
-}
-
-/* ---------- 輪次(一週一輪)----------
-   輪次現在只剩一個用途:每 7 天把每日配額用當下的剩餘量重新分配一次
-   (cycleTarget = quotaPool 快照,dailyQuota 拿它 ÷7)。滾動的 7 天窗口,
-   自動換輪 —— 換輪不會丟掉任何背誦紀錄,只是重算配額,所以自動換沒差。 */
-function ensureCycle() {
-  const today = todayStr();
-  if (!PROGRESS.cycleStart) {
-    PROGRESS.cycleStart = today;
-    PROGRESS.cycleTarget = quotaPool().length;
-    saveProgress();
-    return;
-  }
-  if (daysBetween(PROGRESS.cycleStart, today) >= WEEK_TARGET) {
-    PROGRESS.cycleStart = today;
-    PROGRESS.cycleTarget = quotaPool().length;
-    saveProgress();
   }
 }
 
@@ -392,38 +355,43 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  ensureDailyRollover();
-  const t = todayStats();
+  const r = roundStats();
   const book = bookProgress();
-  const remaining = quotaPool().length;
 
-  // 大圓圈 = 今日份的進度(已背 / 今天配額)
+  // 大圓圈 = 這一份的進度(已背 / 這份配額),即時算,不是跟著日期走
   const circ = 326.7256;
-  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - t.pct / 100));
-  document.getElementById('ring-pct').textContent = t.pct + '%';
-  document.getElementById('ring-count').textContent = `今日 ${t.done} / ${t.quota}`;
+  document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - r.pct / 100));
+  document.getElementById('ring-pct').textContent = r.pct + '%';
+  document.getElementById('ring-count').textContent = `這份 ${r.done} / ${r.quota}`;
 
-  // 小小一條 = 整份進度
-  document.getElementById('home-breakdown').innerHTML =
-    `<span>整份<b>${book.pct}</b>%</span>` +
-    `<span>還沒搞定<b>${remaining}</b>字</span>`;
+  // 小小一條 = 整份進度(在整本 A→Z 裡走到哪了,跟「這一份」是不同的度量)
+  document.getElementById('home-breakdown').innerHTML = `<span>整份<b>${book.pct}</b>%</span>`;
 
-  document.getElementById('stat-due').textContent = t.done;
-  document.getElementById('stat-new').textContent = Math.max(0, t.quota - t.done);
+  // 三個分類各有幾個字,即時更新
+  const counts = { 1: 0, 2: 0, 3: 0 };
+  for (const e of VOCAB_DATA) counts[tierOf(e.num)]++;
+  document.getElementById('home-count-known').textContent = counts[TIER_KNOWN];
+  document.getElementById('home-count-impress').textContent = counts[TIER_IMPRESS];
+  document.getElementById('home-count-new').textContent = counts[TIER_NEW];
+
+  document.getElementById('stat-due').textContent = r.done;
+  document.getElementById('stat-new').textContent = Math.max(0, r.quota - r.done);
   document.getElementById('stat-streak').textContent = PROGRESS.streak;
 
   document.getElementById('home-quota-note').textContent =
-    remaining ? `今天配額 ${t.quota} 張` : '整本都搞定了 🎉';
+    r.quota ? `這份配額 ${r.quota} 張` : '有印象、還沒背都清空了 🎉';
 
-  renderWeekStrip(t);
+  renderWeekStrip();
 }
 
-// 近七天:每天一個小圈,達標打勾、沒達標就畫出完成了幾分之幾的弧。
-// 今天用即時數字(不用等存進歷史),過去六天讀 dailyHistory,沒紀錄就是空的。
-function renderWeekStrip(todayLive) {
+// 近七天:每天一個小圈,達標打勾、沒達標就畫出完成了幾分之幾的弧。這是日曆天的
+// 統計(calSeen/dailyHistory),跟首頁圓圈那個「這一份」的進度是兩回事、互不影響 ——
+// 一份可以橫跨好幾天、一天也可以背好幾份,近七天單純只看「那天總共背了幾個字」。
+function renderWeekStrip() {
   const wrap = document.getElementById('week-strip');
   if (!wrap) return;
   const hist = PROGRESS.dailyHistory || {};
+  const todayLive = { done: (PROGRESS.calSeen || []).length, quota: roundQuota() };
   const WD = ['日', '一', '二', '三', '四', '五', '六'];
   const CIRC = 81.68; // 2π×13,跟 .week-ring-fg 的半徑對應
   let html = '';
@@ -453,14 +421,14 @@ let session = { queue: [], idx: 0, flipped: false };
 
 function isArchived(num) { return !!getState(num).archived; }
 
-/* 今天這一批:整本從頭往後掃,只收「目前分類 toggle 有開」而且今天還沒算過的字。
-   沒看過的排前面、看過的排後面(方便一週一輪);開了隨機順序就各自打亂。
-   已算進今日份量的字會跳過,所以中途退出再進來是接續、不是重來。 */
+/* 這一份:整本從頭往後掃,只收「目前分類 toggle 有開」而且這一份還沒算過的字。
+   沒看過的排前面、看過的排後面;開了隨機順序就各自打亂。
+   已算進這份的字會跳過,所以中途退出再進來是接續、不是重來。 */
 function buildQueue(need) {
-  need = need || Math.max(0, todayStats().quota - dailyDone());
+  need = need || Math.max(0, roundStats().quota - dailyDone());
   if (need <= 0) return [];
-  const doneToday = new Set(PROGRESS.dailySeen || []);
-  const pool = VOCAB_DATA.filter(e => isVisible(e.num) && !doneToday.has(e.num));
+  const doneThisRound = new Set(PROGRESS.dailySeen || []);
+  const pool = VOCAB_DATA.filter(e => isVisible(e.num) && !doneThisRound.has(e.num));
   let unseen = pool.filter(e => !isSeen(e.num));
   let seen = pool.filter(e => isSeen(e.num));
   if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
@@ -468,16 +436,15 @@ function buildQueue(need) {
 }
 
 function startSession() {
-  ensureDailyRollover();
   syncToggleUI();
   const q = buildQueue();
   session = { queue: q, idx: 0, flipped: false };
   if (q.length === 0) {
-    const t = todayStats();
-    if (t.quota === 0) {
+    const r = roundStats();
+    if (r.quota === 0) {
       alert('沒有字可以背了。\n\n可能是都標成「已會」了,或是「還沒背」和「有印象」兩個分類都關掉了 —— 點右上角的設定開回來。');
     } else {
-      alert(`今天配額的 ${t.quota} 張都背完了!\n\n想再多背一點,到完成頁按「繼續下一批」。`);
+      alert(`這一份的 ${r.quota} 張都背完了!\n\n想開始下一份,回首頁按「開始下一份」。`);
     }
     return;
   }
@@ -526,17 +493,18 @@ function renderCard() {
   document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
   syncActionButtons();
-  exposeWord(e.num);      // 看過即標記
-  markSeenToday(e.num);   // 算進今天的配額
+  exposeWord(e.num);          // 看過即標記
+  markSeenThisRound(e.num);   // 算進這一份
+  markSeenToday(e.num);       // 順便記進日曆天的歷史,給「近七天」用
   renderCardProgress();
 }
 
-// 背卡頁頂端進度條 = 今日份的進度(已背 / 今天配額),中途退出再進來會接續
+// 背卡頁頂端進度條 = 這一份的進度(已背 / 這份配額),中途退出再進來會接續
 function renderCardProgress() {
-  const t = todayStats();
-  document.getElementById('session-progress-fill').style.width = t.pct + '%';
-  document.getElementById('session-progress-count').textContent = `今日 ${t.done} / ${t.quota}`;
-  document.getElementById('session-progress-pct').textContent = t.pct + '%';
+  const r = roundStats();
+  document.getElementById('session-progress-fill').style.width = r.pct + '%';
+  document.getElementById('session-progress-count').textContent = `${r.done} / ${r.quota}`;
+  document.getElementById('session-progress-pct').textContent = r.pct + '%';
 }
 
 function escapeHtml(s) {
@@ -654,14 +622,8 @@ function syncToggleUI() {
 const TIER_VISIBILITY_KEYS = ['showNew', 'showImpress', 'showKnown'];
 function setSetting(key, val) {
   PROGRESS.settings[key] = val;
-  if (TIER_VISIBILITY_KEYS.includes(key)) {
-    // 關掉一類 = 當下就把它當「已會」看待,不用等到換輪才調整分母。
-    // 例如關掉「有印象」,配額跟本輪目標要立刻只照著還沒背的字重算,
-    // 不是每次標已會都重算(那樣配額會一直跳),但這是使用者主動切換的
-    // 明確動作,應該馬上生效。
-    ensureCycle();
-    PROGRESS.cycleTarget = quotaPool().length;
-  }
+  // 配額是即時算的(roundQuota),切分類 toggle 不用額外做什麼,
+  // 下一次 renderHome / renderCardProgress 就會反映新的數字。
   saveProgress();
   syncToggleUI();
   renderHome();
@@ -718,17 +680,17 @@ function markCurrent(tier) {
 }
 
 function finishSession() {
-  const t = todayStats();
+  const r = roundStats();
   const remaining = quotaPool().length;
   const known = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_KNOWN).length;
   const impress = VOCAB_DATA.filter(e => tierOf(e.num) === TIER_IMPRESS).length;
-  // 只有真的背完今天的份量才慶祝;半路一批看完了就低調帶過
-  const hit = t.done >= t.quota;
+  // 只有真的背完這一份才慶祝;半路先跑掉就低調帶過
+  const hit = r.done >= r.quota;
   document.getElementById('done-emoji').textContent = hit ? '🎉' : '👍';
-  document.getElementById('done-title').textContent = hit ? '今天的份量完成了！' : '這一批先到這';
+  document.getElementById('done-title').textContent = hit ? '這一份背完了！' : '先看到這裡';
   document.getElementById('done-stats').innerHTML =
-    `今日進度 <b>${t.done} / ${t.quota}</b> 張` +
-    (hit ? '' : `<br>再 <b>${Math.max(0, t.quota - t.done)}</b> 張就到今天的目標了`) +
+    `這份進度 <b>${r.done} / ${r.quota}</b> 張` +
+    (hit ? '' : `<br>再 <b>${Math.max(0, r.quota - r.done)}</b> 張就到這份的目標了`) +
     `<br>整份還沒搞定 <b>${remaining}</b> 字` +
     `<br>✓ 已會 <b>${known}</b> ・ 🤔 有印象 <b>${impress}</b>`;
   document.getElementById('btn-done-next').style.display = remaining ? '' : 'none';
@@ -868,9 +830,12 @@ function importProgress(file) {
 /* ---------- wiring ---------- */
 document.getElementById('btn-start-session').onclick = startSession;
 document.getElementById('btn-new-day').onclick = () => {
-  // 只有已經背了才問一聲,免得手滑把今天的進度清掉
-  if (dailyDone() > 0 && !confirm(`今天已經背了 ${dailyDone()} 張。\n\n確定要把今日進度歸零、重新開始嗎？（分類和背過的紀錄都不受影響）`)) return;
-  startNewDay();
+  // 已經背完這份、或還沒背的話不用問;只有背了一半還沒到配額才確認一下,
+  // 免得手滑把還沒背完的那份洗掉
+  const r = roundStats();
+  if (r.done > 0 && r.done < r.quota &&
+      !confirm(`這份已經背了 ${r.done} / ${r.quota} 張,還沒到目標。\n\n確定要放棄、直接開始下一份嗎？（分類和背過的紀錄都不受影響）`)) return;
+  startNextRound();
 };
 document.getElementById('btn-stats').onclick = () => { renderStats(); showView('view-stats'); };
 document.getElementById('btn-exit-stats').onclick = () => { showView('view-home'); renderHome(); };
@@ -910,10 +875,11 @@ document.getElementById('btn-speak').onclick = (ev) => {
   window.speechSynthesis.speak(u);
 };
 
-// 「繼續下一批」:再抓一批跟今日配額一樣多的字(超出配額也照跑)
+// 「開始下一份」:歸零重來,馬上背下一份(份量用當下即時重算的配額)
 document.getElementById('btn-done-next').onclick = () => {
-  // 再抓一批,份量跟今天配額一樣(buildQueue 內部本來就會被「還抓得到的量」卡住)
-  const q = buildQueue(dailyQuota());
+  PROGRESS.dailySeen = [];
+  saveProgress();
+  const q = buildQueue(roundQuota());
   if (q.length === 0) { showView('view-home'); renderHome(); return; }
   session = { queue: q, idx: 0, flipped: false };
   showView('view-session');

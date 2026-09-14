@@ -26,50 +26,49 @@
 
 `day` 欄位還在(1–7)但**程式已經完全不看它** —— 整本就是一份 1738 字,依 `num` 順序背。
 
-### 三分類 + 每日配額(取代了舊的「第幾天 / 第幾箱 SRS」)
+### 三分類 + 「一份」的配額(不是「每日」,沒有日期概念)
 
 - 每個字屬於三類之一,存在 `PROGRESS.words[num]`:`archived`=已會、`impress`=有印象、都沒有=還沒背。
   **`archived` 是舊的封存旗標,絕對不能改寫或搬移**(使用者說過 "can't afford 重新 archive")。
 - `settings.showNew / showImpress / showKnown` 決定哪幾類會出現在單字卡。預設「已會」關著。
-- 每日配額 raw = `cycleTarget ÷ 7`(cycleTarget 是輪次開始的 `quotaPool()` 快照)。
-  輪次中途標分類不會讓 raw 跳動,只有換輪(`ensureCycle`)或切分類 toggle
-  (`setSetting` 裡立刻重算 `cycleTarget = quotaPool()`)才變。
-- **`todayStats().quota` 才是實際顯示/用的配額** = `min(raw, 已背 + 今天還抓得到的字)`。
-  這一層很重要:整本快背完的時候,剩下的字可能不夠一天 raw 配額,如果不夾住,
-  一批背光了進度條卻卡在一半、還跳「這回合完成」—— 這是修過的 bug,不要拿掉這個 min。
-  正常情況(還有一大堆字)`todayStats().quota === raw`,不會亂跳。
-- `finishSession` 只有 `done >= todayStats().quota` 才顯示「🎉 今天的份量完成了」,
-  否則低調顯示「👍 這一批先到這」。`#done-title` / `#done-emoji` 由 JS 動態設定。
+- **配額是即時算的,不是哪一天的快照**:`roundQuota() = ceil(quotaPool().length / 7)`。
+  `quotaPool()` = 有印象 + 還沒背,只算 toggle 有開的那些,已會永遠不算。關掉「有印象」
+  配額就只剩「還沒背 ÷7」,兩個都開就是兩個加起來 ÷7 —— 標分類、切 toggle 當下就反映
+  在配額上,**這是使用者明確要求的「隨時更新」,不要又改回快照制**。
+- `PROGRESS.dailySeen`(欄位名沒改,但意思是「這一份」已經背過的 num)只有手動呼叫
+  `startNextRound()` 才會清空 —— **沒有日期、沒有自動重設**。背完一份配額,首頁按
+  「開始下一份」或完成頁按「開始下一份」都可以馬上重新開始背下一份,不用等隔天。
+  這是使用者明確要求拿掉的功能,**不要再加回任何跟日期綁在一起的自動歸零**。
+- `roundStats()` = `{quota: roundQuota(), done: dailySeen.length, pct}`,首頁圓環跟背卡頁
+  頂端進度條都是這個。因為配額是即時算的,`buildQueue` 一定抓得滿(`quotaPool` 永遠
+  ≥ `quotaPool/7`),不會再發生「一批背光了但配額沒到、卻跳提前完成」的情況。
+- `finishSession`:`done >= quota` 才顯示「🎉 這一份背完了」,否則低調顯示「👍 先看到這裡」。
+
+### 首頁「近七天」——跟「這一份」完全獨立的另一套統計
+
+- 使用者不要「每日」跟自動重設了,但「近七天有沒有練到」這種歷史紀錄還有用,所以另外
+  用 `PROGRESS.calDate` / `calSeen`(日曆天用,自動跨天歸零)追蹤「今天實際背了幾個字」,
+  跟 `dailySeen`(份,手動歸零)完全分開 —— 一份可以橫跨好幾天,一天也可以背好幾份,
+  近七天只看「那個日曆天總共背了幾個字」。
+- `markSeenToday(num)` 是這一路的入口(在 `renderCard()` 裡跟 `markSeenThisRound()` 並行呼叫),
+  偵測到 `todayStr()` 換日就自動把 `calSeen` 存進 `dailyHistory` 再歸零 —— 這個自動歸零
+  只影響歷史顯示,**不會**打斷正在背的那一份,跟使用者不要的「每日自動重設」是兩回事。
 - **「今天」= 裝置本地時間凌晨 4 點才換日**,不是午夜。`todayStr()` = `Date.now() - 4h`
   再取本地日期。**不要寫死時區**(例如台灣 UTC+8)—— 試過一次,使用者人在國外時
   裝置時區跟台灣差了大半天,近七天那排圓圈整個錯位、星期幾對不上他實際背的
   那天,這是修過的 bug。
-- 換日會自動觸發(`ensureDailyRollover()`,在 `renderHome()` / `startSession()` 呼叫):
-  `dailySeen` 自動歸零、把剛結束那天的成績存進 `dailyHistory`。**只在回首頁 / 開始背單字
-  時檢查**,不會在背卡背到一半時把畫面抽換掉(`renderCard`/`markSeenToday` 故意不呼叫它)。
-  首頁「重設今日進度」按鈕還在,是手動提前開始下一天的選項,不是唯一的換日方式了。
-
-### 首頁「近七天」
-
-- `PROGRESS.dailyHistory`:`{ 'YYYY-MM-DD': {done, quota} }`,只留最近 30 天。
-- `recordDailyHistory()` 在 `markSeenToday`(每背一個新字)和 `startNewDay`(歸零前)
-  都會呼叫,所以就算使用者從來不按「重設」,前一天最後的樣子也留得住。
-- `renderWeekStrip()`:近 7 天一排小圈,今天用 `todayStats()` 即時值,過去 6 天讀
+- `PROGRESS.dailyHistory`:`{ 'YYYY-MM-DD': {done, quota} }`,只留最近 30 天,`quota` 存的是
+  寫入當下的即時 `roundQuota()`,只是參考值。
+- `renderWeekStrip()`:近 7 天一排小圈,今天用 `calSeen.length` 即時值,過去 6 天讀
   `dailyHistory`,沒紀錄的那天(沒開 app)就是空圈。達標(`done>=quota`)顯示打勾,
-  沒達標顯示完成比例的弧,兩者都沒有的話代表那天完全沒背。
+  沒達標顯示完成比例的弧。
 - 背卡頁右上角的齒輪面板 = 統計頁那幾個 toggle 的另一個入口,共用 `SETTING_SWITCHES` 清單。
 - 卡片正反面的「有印象／已會」動作鈕置底置中(`.action-stack`),兩隻手單手都按得到,**不要**改回貼單邊或加左右手設定 —— 這是使用者明確要求拿掉的功能。
-
-### 首頁圓環 + 背卡頁頂端進度條 = 今日份的進度
-
-- 兩個都是 `todayStats()`:今日已背(`dailySeen.length`)/ 今天配額(`dailyQuota()`)。
-- **整份進度**只在首頁那一小條(`home-breakdown`)= `bookProgress()`:看過的「最後一個字」
-  在「toggle 開著的所有單字」裡排第幾(照 num / A→Z 順序),只往前不倒退。
-  使用者明確要求整份進度只要小小顯示,不要當主視覺。
-- `overallStats()`(已會/有印象/還沒背的終身統計)只用在統計頁四宮格。
-- 「輪次」(`cycleStart` / `cycleTarget` / `ensureCycle`)還在,但**只剩配額重分配**這一個
-  用途:每 7 天用當下 `quotaPool()` 快照重算 `cycleTarget`,`dailyQuota = cycleTarget ÷ 7`。
-  沒有任何 UI 顯示輪次。
+- 首頁「整份進度」那一小條(`home-breakdown`)= `bookProgress()`:看過的「最後一個字」
+  在「toggle 開著的所有單字」裡排第幾(照 num / A→Z 順序),只往前不倒退,跟「這一份」
+  是不同的度量,使用者明確要求只要小小顯示,不要當主視覺。
+- `overallStats()`(已會/有印象/還沒背的終身統計)只用在統計頁四宮格;首頁改成
+  三個分類卡片(`home-count-known/impress/new`),即時顯示各類有幾個字。
 
 ## 記憶法(`mnemonic`)的撰寫規則
 

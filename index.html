@@ -25,7 +25,7 @@
     </header>
 
     <div class="home-hero">
-      <div class="hero-label">今日進度</div>
+      <div class="hero-label">背誦進度</div>
       <div class="progress-ring-wrap">
         <svg viewBox="0 0 120 120" class="progress-ring">
           <circle cx="60" cy="60" r="52" class="ring-bg"/>
@@ -33,15 +33,21 @@
         </svg>
         <div class="ring-label">
           <div id="ring-pct">0%</div>
-          <div class="ring-small" id="ring-count">今日 0 / 0</div>
+          <div class="ring-small" id="ring-count">這份 0 / 0</div>
         </div>
       </div>
       <div class="home-breakdown" id="home-breakdown"></div>
     </div>
 
+    <div class="tier-row">
+      <div class="tier-chip known"><span id="home-count-known">0</span><label>已會</label></div>
+      <div class="tier-chip impress"><span id="home-count-impress">0</span><label>有印象</label></div>
+      <div class="tier-chip new"><span id="home-count-new">0</span><label>還沒背</label></div>
+    </div>
+
     <div class="stat-row">
-      <div class="stat-chip"><span id="stat-due">0</span><label>今日已背</label></div>
-      <div class="stat-chip"><span id="stat-new">0</span><label>今日剩餘</label></div>
+      <div class="stat-chip"><span id="stat-due">0</span><label>已背</label></div>
+      <div class="stat-chip"><span id="stat-new">0</span><label>剩餘</label></div>
       <div class="stat-chip"><span id="stat-streak">0</span><label>🔥 連續天數</label></div>
     </div>
 
@@ -54,7 +60,7 @@
 
     <div class="home-foot">
       <div class="home-quota-note" id="home-quota-note">—</div>
-      <button id="btn-new-day" class="ghost-btn">↻ 重設今日進度</button>
+      <button id="btn-new-day" class="ghost-btn">↻ 開始下一份</button>
     </div>
   </section>
 
@@ -144,7 +150,7 @@
       <div class="done-emoji" id="done-emoji">🎉</div>
       <div class="done-title" id="done-title">今天的份量完成了！</div>
       <div class="done-stats" id="done-stats"></div>
-      <button id="btn-done-next" class="cta-btn" style="display:none">繼續下一批</button>
+      <button id="btn-done-next" class="cta-btn" style="display:none">開始下一份</button>
       <button id="btn-done-home" class="secondary-btn" style="max-width:200px">回首頁</button>
     </div>
   </section>
