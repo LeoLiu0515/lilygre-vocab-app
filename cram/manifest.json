@@ -1,0 +1,15 @@
+{
+  "name": "考前衝刺｜字根單字通勤機",
+  "short_name": "考前衝刺",
+  "description": "LilyGRE 考前衝刺暫用單字本 — 考完可刪除",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
