@@ -10,7 +10,7 @@
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="單字通勤機">
+<meta name="apple-mobile-web-app-title" content="考前衝刺">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -21,7 +21,7 @@
   <section id="view-home" class="view active">
     <header class="topbar">
       <div class="brand">🔥 考前衝刺模式</div>
-      <button id="btn-stats" class="icon-btn" title="統計">📊</button>
+      <div style="width:32px"></div>
     </header>
 
     <div class="home-hero">
@@ -33,34 +33,16 @@
         </svg>
         <div class="ring-label">
           <div id="ring-pct">0%</div>
-          <div class="ring-small" id="ring-count">這份 0 / 0</div>
+          <div class="ring-small" id="ring-count">0 / 0</div>
         </div>
       </div>
-      <div class="home-breakdown" id="home-breakdown"></div>
-    </div>
-
-    <div class="tier-row">
-      <div class="tier-chip known"><span id="home-count-known">0</span><label>已會</label></div>
-      <div class="tier-chip impress"><span id="home-count-impress">0</span><label>有印象</label></div>
-      <div class="tier-chip new"><span id="home-count-new">0</span><label>還沒背</label></div>
-    </div>
-
-    <div class="stat-row">
-      <div class="stat-chip"><span id="stat-due">0</span><label>已背</label></div>
-      <div class="stat-chip"><span id="stat-new">0</span><label>剩餘</label></div>
-      <div class="stat-chip"><span id="stat-streak">0</span><label>🔥 連續天數</label></div>
-    </div>
-
-    <div class="week-section">
-      <div class="week-label">近七天</div>
-      <div class="week-row" id="week-strip"></div>
+      <div class="home-breakdown" id="home-note"></div>
     </div>
 
     <button id="btn-start-session" class="cta-btn">開始背單字</button>
 
     <div class="home-foot">
-      <div class="home-quota-note" id="home-quota-note">—</div>
-      <button id="btn-new-day" class="ghost-btn">↻ 開始下一份</button>
+      <button id="btn-reset" class="danger-btn">重置「背起來了」的紀錄</button>
     </div>
   </section>
 
@@ -72,39 +54,20 @@
         <div class="session-progress-bar"><div id="session-progress-fill"></div></div>
         <div class="session-progress-label">
           <span id="session-progress-count">0 / 0</span>
-          <span id="session-progress-pct">0%</span>
         </div>
       </div>
-      <button id="btn-session-settings" class="icon-btn" title="設定" aria-label="設定">
-        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 7h11M3.5 12h6M3.5 17h13"/><circle cx="18" cy="7" r="2.3"/><circle cx="13" cy="12" r="2.3"/><circle cx="20.5" cy="17" r="2.3"/></svg>
-      </button>
+      <div style="width:32px"></div>
     </header>
-
-    <div id="session-panel" class="session-panel" hidden>
-      <div class="sp-head">卡片</div>
-      <div class="sp-row"><span class="sp-label">翻卡先看背面</span>
-        <button id="panel-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
-      <div class="sp-divider"></div>
-      <div class="sp-head">要出現的分類</div>
-      <div class="sp-row"><span class="sp-label">還沒背</span>
-        <button id="panel-show-new" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button></div>
-      <div class="sp-row"><span class="sp-label">🤔 有印象</span>
-        <button id="panel-show-impress" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button></div>
-      <div class="sp-row"><span class="sp-label">✓ 已會</span>
-        <button id="panel-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
-    </div>
 
     <div class="card-stage">
       <div id="card-swiper">
       <div id="flashcard" class="flashcard">
         <div class="card-face card-front">
-          <div class="tier-badge"></div>
           <div class="card-word" id="card-word"></div>
           <div class="card-front-example" id="card-front-example"></div>
           <div class="card-hint">點卡片看解答 · 上滑看下一個</div>
         </div>
         <div class="card-face card-back">
-          <div class="tier-badge"></div>
           <div class="card-back-inner">
             <div class="card-word-row">
               <span class="card-word-small" id="card-word-back"></span>
@@ -128,17 +91,11 @@
       </div>
       </div>
       <div class="action-stack">
-        <button id="btn-impress" class="action-btn" title="有印象,但不確定會不會忘">
-          <span class="action-circle">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h9a1 1 0 0 1 1 1V20l-5.5-4-5.5 4V5.5a1 1 0 0 1 1-1z"/></svg>
-          </span>
-          <span class="action-label">有印象</span>
-        </button>
-        <button id="btn-archive" class="action-btn" title="已經會了">
+        <button id="btn-memorized" class="action-btn" title="背起來了">
           <span class="action-circle">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
           </span>
-          <span class="action-label">已會</span>
+          <span class="action-label">背起來了</span>
         </button>
       </div>
     </div>
@@ -148,102 +105,10 @@
   <section id="view-done" class="view">
     <div class="done-stage">
       <div class="done-emoji" id="done-emoji">🎉</div>
-      <div class="done-title" id="done-title">今天的份量完成了！</div>
+      <div class="done-title" id="done-title">全部背起來了！</div>
       <div class="done-stats" id="done-stats"></div>
-      <button id="btn-done-next" class="cta-btn" style="display:none">開始下一份</button>
+      <button id="btn-done-next" class="cta-btn" style="display:none">繼續背</button>
       <button id="btn-done-home" class="secondary-btn" style="max-width:200px">回首頁</button>
-    </div>
-  </section>
-
-  <!-- STATS -->
-  <section id="view-stats" class="view">
-    <header class="topbar">
-      <button id="btn-exit-stats" class="icon-btn">✕</button>
-      <div class="brand">統計</div>
-      <div style="width:32px"></div>
-    </header>
-    <div class="stats-body">
-      <div class="stats-grid" id="stats-grid"></div>
-
-      <h3>單字卡要出現哪幾類</h3>
-      <p class="stats-note">關掉的那一類背卡時不會出現，進度條的分母也只算開著的字。隨時可以再打開，分類不會消失。</p>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">還沒背 <span class="tier-count" id="count-new">0</span></div>
-          <div class="setting-sub">完全還沒記起來的字</div>
-        </div>
-        <button id="toggle-show-new" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
-      </div>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">🤔 有印象 <span class="tier-count" id="count-impress">0</span></div>
-          <div class="setting-sub">短期記得，但不確定會不會忘</div>
-        </div>
-        <button id="toggle-show-impress" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
-      </div>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">✓ 已會 <span class="tier-count" id="count-known">0</span></div>
-          <div class="setting-sub">已經穩了，平常不用再看</div>
-        </div>
-        <button id="toggle-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
-      </div>
-
-      <h3>單字搜尋・改分類</h3>
-      <p class="stats-note">打單字、中文意思或字根都可以找。點右邊的標籤改分類。</p>
-      <input type="search" id="word-search" class="sync-input" placeholder="搜尋單字 / 中文 / 字根" style="width:100%;margin:10px 0 12px;">
-      <div class="tier-filter" id="tier-filter">
-        <button class="tier-chip active" data-tier="all">全部</button>
-        <button class="tier-chip" data-tier="3">還沒背</button>
-        <button class="tier-chip" data-tier="2">🤔 有印象</button>
-        <button class="tier-chip" data-tier="1">✓ 已會</button>
-      </div>
-      <div id="search-list" class="archived-list"></div>
-
-      <h3>偏好設定</h3>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">卡片預設看背面</div>
-          <div class="setting-sub">開啟後翻卡直接看到中文/定義，不用先點正面</div>
-        </div>
-        <button id="toggle-default-flip" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
-      </div>
-      <div class="setting-row">
-        <div class="setting-text">
-          <div class="setting-title">隨機順序</div>
-          <div class="setting-sub">複習輪建議開啟：打亂出卡順序，避免靠「上一張是什麼」的位置記憶</div>
-        </div>
-        <button id="toggle-shuffle" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
-      </div>
-      <h3>跨裝置同步</h3>
-      <p class="stats-note" id="sync-status">尚未連接。連接後手機和電腦會自動同步同一份進度。</p>
-      <div id="sync-connect-box">
-        <p class="stats-note">
-          用你的 GitHub 帳號建立一個私人 Gist 當作同步空間：
-          <a href="https://github.com/settings/tokens/new?description=LilyGRE%20Vocab%20Sync&scopes=gist" target="_blank" rel="noopener">點此建立權限僅限「gist」的 Token</a>，
-          複製後貼在下面。
-        </p>
-        <div class="backup-row">
-          <input type="password" id="sync-token-input" placeholder="貼上 GitHub Token（ghp_ 開頭）" class="sync-input">
-          <button id="btn-sync-connect" class="secondary-btn">連接</button>
-        </div>
-      </div>
-      <div id="sync-connected-box" style="display:none">
-        <div class="backup-row">
-          <button id="btn-sync-now" class="secondary-btn">🔄 立即同步</button>
-          <button id="btn-sync-disconnect" class="secondary-btn">中斷連接</button>
-        </div>
-      </div>
-
-      <h3>資料備份</h3>
-      <p class="stats-note">沒連同步的話，進度只存在這個瀏覽器裡，換裝置前記得匯出備份。</p>
-      <div class="backup-row">
-        <button id="btn-export" class="secondary-btn">⬇️ 匯出進度</button>
-        <button id="btn-import" class="secondary-btn">⬆️ 匯入進度</button>
-        <input type="file" id="import-file" accept="application/json" hidden>
-      </div>
-      <button id="btn-reset" class="danger-btn">重置背誦進度（已會／有印象的分類不受影響）</button>
-      <button id="btn-undo-reset" class="secondary-btn" style="display:none;margin-top:10px;">↩️ 復原上次重置</button>
     </div>
   </section>
 
@@ -255,15 +120,12 @@
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('sw.js').then((reg) => {
-      // 每次開啟/回到前景都主動問一次「有沒有新版」,不要只靠瀏覽器自己的排程
       reg.update();
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') reg.update();
       });
     });
   });
-  // 新的 service worker 一接管,代表已經有新版本了 —— 直接重新整理一次,
-  // 讓使用者不用自己搞懂快取問題,永遠自動拿到最新版。
   let refreshedForNewSW = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
     if (refreshedForNewSW) return;
