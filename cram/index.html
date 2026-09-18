@@ -39,6 +39,14 @@
       <div class="home-breakdown" id="home-note"></div>
     </div>
 
+    <div class="setting-row">
+      <div class="setting-text">
+        <div class="setting-title">顯示已經會的字</div>
+        <div class="setting-sub">關掉的話,背卡時會自動跳過已經標記「背起來了」的字</div>
+      </div>
+      <button id="toggle-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+    </div>
+
     <button id="btn-start-session" class="cta-btn">開始背單字</button>
 
     <div class="home-foot">
@@ -56,8 +64,16 @@
           <span id="session-progress-count">0 / 0</span>
         </div>
       </div>
-      <div style="width:32px"></div>
+      <button id="btn-session-settings" class="icon-btn" title="設定" aria-label="設定">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3.5 7h11M3.5 12h6M3.5 17h13"/><circle cx="18" cy="7" r="2.3"/><circle cx="13" cy="12" r="2.3"/><circle cx="20.5" cy="17" r="2.3"/></svg>
+      </button>
     </header>
+
+    <div id="session-panel" class="session-panel" hidden>
+      <div class="sp-head">卡片</div>
+      <div class="sp-row"><span class="sp-label">顯示已經會的字</span>
+        <button id="panel-show-known" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button></div>
+    </div>
 
     <div class="card-stage">
       <div id="card-swiper">

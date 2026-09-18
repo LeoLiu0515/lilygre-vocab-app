@@ -1,9 +1,11 @@
 /* ---------- 考前衝刺版:簡化版 ----------
-   只留兩件事:一條「全部字現在刷到哪裡了」的進度條,跟卡片上「背起來了」這一顆
-   分類按鈕。進度條是「目前位置」,不是「標記了幾個」—— 所以光是滑動(不點按鈕)
-   進度條也會跟著動,而且離開再回來會從上次滑到的地方接著看,不會重來。
-   跟原本正式版比,拿掉了三分類/配額/近七天/連續天數/同步/搜尋分類等等 —— 這是
-   暫時衝刺用的,考完就整個 cram/ 資料夾砍掉,不需要那麼多功能。 */
+   只留三件事:一條「全部字現在刷到哪裡了」的進度條、卡片上「背起來了」這一顆
+   分類按鈕、一個「顯示已經會的字」的開關(跟正式版一樣,關掉就背卡時自動跳過)。
+   進度條是「目前位置」,不是「標記了幾個」—— 所以光是滑動(不點按鈕)進度條也會
+   跟著動,而且離開再回來會從上次滑到的地方接著看,不會重來。
+   跟原本正式版比,拿掉了三分類(只留「背起來了」一種)/配額/近七天/連續天數/
+   同步/搜尋分類等等 —— 這是暫時衝刺用的,考完就整個 cram/ 資料夾砍掉,不需要
+   那麼多功能。 */
 const STORAGE_KEY = 'lgv_cram_progress_v1';
 
 const byNum = {};
@@ -13,7 +15,7 @@ function defaultProgress() {
   return {
     position: 0,      // 目前滑到整副牌(VOCAB_DATA 固定順序)的第幾張,離開再進來從這裡接著看
     memorized: [],    // 已經按過「背起來了」的 num 清單,純粹是分類標記,不影響進度條
-    settings: { defaultFlipped: false },
+    settings: { defaultFlipped: false, showKnown: false },
   };
 }
 
@@ -45,6 +47,17 @@ function setMemorized(num, val) {
   if (!val && i !== -1) PROGRESS.memorized.splice(i, 1);
   saveProgress();
 }
+// 關掉「顯示已經會的字」時,已標記的字要在背卡時被跳過
+function isHidden(num) { return isMemorized(num) && !PROGRESS.settings.showKnown; }
+// 從 fromIdx 開始(含自己)往 dir 方向找下一張沒被隱藏的卡,找不到回傳 -1
+function findVisible(fromIdx, dir) {
+  let i = fromIdx;
+  while (i >= 0 && i < VOCAB_DATA.length) {
+    if (!isHidden(VOCAB_DATA[i].num)) return i;
+    i += dir;
+  }
+  return -1;
+}
 
 // 進度 = 目前滑到第幾張(position),不是標記了幾個 —— 單純瀏覽也會往前走
 function swipeProgress() {
@@ -69,13 +82,43 @@ function renderHome() {
   document.getElementById('home-note').textContent = `已標記背起來 ${PROGRESS.memorized.length} 個字`;
   document.getElementById('btn-start-session').textContent =
     PROGRESS.position > 0 && PROGRESS.position < VOCAB_DATA.length - 1 ? '繼續背單字' : '開始背單字';
+  syncToggleUI();
+}
+
+/* ---------- 開關:顯示已經會的字(首頁 + 背卡頁面板共用) ---------- */
+const SETTING_SWITCHES = [['toggle-show-known', 'showKnown'], ['panel-show-known', 'showKnown']];
+function syncToggleUI() {
+  for (const [id, key] of SETTING_SWITCHES) {
+    const el = document.getElementById(id);
+    if (el) el.setAttribute('aria-checked', String(!!PROGRESS.settings[key]));
+  }
+}
+function setSetting(key, val) {
+  PROGRESS.settings[key] = val;
+  saveProgress();
+  syncToggleUI();
+  const inSession = document.getElementById('view-session').classList.contains('active');
+  if (inSession && key === 'showKnown') {
+    // 剛關掉開關,眼前這張如果變成該隱藏的字,直接跳到下一張看得到的
+    const e = currentEntry();
+    if (e && isHidden(e.num)) nextCard();
+  }
 }
 
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽,固定順序,離開會記住位置) ---------- */
 let session = { idx: 0, flipped: false };
 
 function startSession() {
-  session = { idx: PROGRESS.position, flipped: false };
+  let idx = PROGRESS.position;
+  if (isHidden(VOCAB_DATA[idx].num)) {
+    idx = findVisible(idx + 1, 1);
+    if (idx === -1) idx = findVisible(0, 1);
+  }
+  if (idx === -1 || idx == null) {
+    alert('全部字都已經標記「背起來了」!\n\n把上面「顯示已經會的字」的開關打開才能繼續複習。');
+    return;
+  }
+  session = { idx, flipped: false };
   showView('view-session');
   renderCard();
 }
@@ -121,6 +164,7 @@ function renderCard() {
   document.getElementById('card-syn-wrap').style.display = synTokens.length ? '' : 'none';
 
   syncActionButton();
+  syncToggleUI();
   renderCardProgress();
 }
 
@@ -197,13 +241,16 @@ function flySwap(dir, apply) {
   }, 800);
 }
 
+// 換卡一律跳過「顯示已經會的字」關掉時被隱藏的字
 function nextCard() {
-  if (session.idx >= VOCAB_DATA.length - 1) { finishSession(); return; }
-  flySwap('up', () => { session.idx++; renderCard(); });
+  const ni = findVisible(session.idx + 1, 1);
+  if (ni === -1) { finishSession(); return; }
+  flySwap('up', () => { session.idx = ni; renderCard(); });
 }
 function prevCard() {
-  if (session.idx <= 0) return;
-  flySwap('down', () => { session.idx--; renderCard(); });
+  const pi = findVisible(session.idx - 1, -1);
+  if (pi === -1) return;
+  flySwap('down', () => { session.idx = pi; renderCard(); });
 }
 
 // 唯一的分類按鈕:「背起來了」,亮起來表示這張卡已經標記過;再按一次可以取消
@@ -213,10 +260,17 @@ function syncActionButton() {
   document.getElementById('btn-memorized').classList.toggle('on', on);
 }
 
+// 按下去就標記,而且直接滑到下一個字(跟正式版行為一致);再按一次取消標記則留在原地
 function markCurrent() {
+  if (swapping) return;
   const e = currentEntry();
   if (!e) return;
-  setMemorized(e.num, !isMemorized(e.num));
+  const next = !isMemorized(e.num);
+  setMemorized(e.num, next);
+  if (next) {
+    nextCard();
+    return;
+  }
   syncActionButton();
 }
 
@@ -236,6 +290,7 @@ renderHome();
 document.getElementById('btn-start-session').onclick = startSession;
 document.getElementById('btn-exit-session').onclick = () => {
   window.speechSynthesis && window.speechSynthesis.cancel();
+  closeSessionPanel();
   showView('view-home'); renderHome();
 };
 document.getElementById('flashcard').onclick = flipCard;
@@ -253,7 +308,9 @@ document.getElementById('btn-speak').onclick = (ev) => {
   window.speechSynthesis.speak(u);
 };
 document.getElementById('btn-done-next').onclick = () => {
-  session = { idx: 0, flipped: false };
+  const idx = findVisible(0, 1);
+  if (idx === -1) { showView('view-home'); renderHome(); return; }
+  session = { idx, flipped: false };
   showView('view-session');
   renderCard();
 };
@@ -266,6 +323,22 @@ document.getElementById('btn-reset').onclick = () => {
     renderHome();
   }
 };
+
+const sessionPanel = document.getElementById('session-panel');
+function closeSessionPanel() { sessionPanel.hidden = true; }
+document.getElementById('btn-session-settings').onclick = (ev) => {
+  ev.stopPropagation();
+  sessionPanel.hidden = !sessionPanel.hidden;
+};
+document.addEventListener('click', (ev) => {
+  if (!sessionPanel.hidden && !sessionPanel.contains(ev.target) &&
+      ev.target.closest('#btn-session-settings') === null) closeSessionPanel();
+});
+
+for (const [id, key] of SETTING_SWITCHES) {
+  const el = document.getElementById(id);
+  if (el) el.onclick = () => setSetting(key, !PROGRESS.settings[key]);
+}
 
 /* 鍵盤:空白鍵翻面,上下(或左右)方向鍵換卡(桌機測試用) */
 document.addEventListener('keydown', (ev) => {
@@ -316,8 +389,8 @@ document.addEventListener('keydown', (ev) => {
     if (mode !== 'swipe') return;
     ev.preventDefault();
     let y = dy;
-    if (session.idx === 0 && dy > 0) y = dy * 0.3;
-    if (session.idx >= VOCAB_DATA.length - 1 && dy < 0) y = dy * 0.55;
+    if (findVisible(session.idx - 1, -1) === -1 && dy > 0) y = dy * 0.3;
+    if (findVisible(session.idx + 1, 1) === -1 && dy < 0) y = dy * 0.55;
     sw.style.transform = `translateY(${y}px)`;
     sw.style.opacity = String(Math.max(0.4, 1 - Math.abs(y) / 600));
   }, { passive: false });
@@ -329,13 +402,19 @@ document.addEventListener('keydown', (ev) => {
     mode = null;
     const dy = lastY - sy;
     const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
-    if (commit && dy < 0) {
-      if (session.idx < VOCAB_DATA.length - 1) { finishDrag('up', () => { session.idx++; renderCard(); }); return; }
-      springBack(); finishSession(); return;
-    }
-    if (commit && dy > 0 && session.idx > 0) { finishDrag('down', () => { session.idx--; renderCard(); }); return; }
+    if (commit && dy < 0) { finishDragTo(findVisible(session.idx + 1, 1), 'up'); return; }
+    if (commit && dy > 0) { finishDragTo(findVisible(session.idx - 1, -1), 'down'); return; }
     springBack();
   }, { passive: true });
+
+  function finishDragTo(idx, dir) {
+    if (idx === -1) {
+      if (dir === 'up') { springBack(); finishSession(); return; }
+      springBack();
+      return;
+    }
+    finishDrag(dir, () => { session.idx = idx; renderCard(); });
+  }
 
   function finishDrag(dir, apply) {
     swapping = true;
