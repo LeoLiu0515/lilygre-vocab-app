@@ -1,5 +1,7 @@
 /* ---------- 考前衝刺版:簡化版 ----------
-   只留兩件事:一條「全部背起來了多少」的進度條,跟卡片上「背起來了」這一顆按鈕。
+   只留兩件事:一條「全部字現在刷到哪裡了」的進度條,跟卡片上「背起來了」這一顆
+   分類按鈕。進度條是「目前位置」,不是「標記了幾個」—— 所以光是滑動(不點按鈕)
+   進度條也會跟著動,而且離開再回來會從上次滑到的地方接著看,不會重來。
    跟原本正式版比,拿掉了三分類/配額/近七天/連續天數/同步/搜尋分類等等 —— 這是
    暫時衝刺用的,考完就整個 cram/ 資料夾砍掉,不需要那麼多功能。 */
 const STORAGE_KEY = 'lgv_cram_progress_v1';
@@ -9,7 +11,8 @@ for (const e of VOCAB_DATA) byNum[e.num] = e;
 
 function defaultProgress() {
   return {
-    memorized: [],   // 已經「背起來了」的 num 清單
+    position: 0,      // 目前滑到整副牌(VOCAB_DATA 固定順序)的第幾張,離開再進來從這裡接著看
+    memorized: [],    // 已經按過「背起來了」的 num 清單,純粹是分類標記,不影響進度條
     settings: { defaultFlipped: false },
   };
 }
@@ -24,6 +27,8 @@ function loadProgress() {
     const merged = Object.assign(defaultProgress(), p);
     merged.settings = Object.assign(defaultProgress().settings, p.settings || {});
     if (!Array.isArray(merged.memorized)) merged.memorized = [];
+    if (!Number.isInteger(merged.position)) merged.position = 0;
+    merged.position = Math.max(0, Math.min(merged.position, VOCAB_DATA.length - 1));
     return merged;
   } catch (e) {
     return defaultProgress();
@@ -41,9 +46,10 @@ function setMemorized(num, val) {
   saveProgress();
 }
 
-function overallProgress() {
+// 進度 = 目前滑到第幾張(position),不是標記了幾個 —— 單純瀏覽也會往前走
+function swipeProgress() {
   const total = VOCAB_DATA.length;
-  const done = PROGRESS.memorized.length;
+  const done = Math.min(total, PROGRESS.position + 1);
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
@@ -55,38 +61,33 @@ function showView(id) {
 
 /* ---------- HOME ---------- */
 function renderHome() {
-  const p = overallProgress();
+  const p = swipeProgress();
   const circ = 326.7256;
   document.getElementById('ring-fg').style.strokeDashoffset = String(circ * (1 - p.pct / 100));
   document.getElementById('ring-pct').textContent = p.pct + '%';
   document.getElementById('ring-count').textContent = `${p.done} / ${p.total}`;
-  document.getElementById('home-note').textContent =
-    p.done >= p.total ? '全部背起來了 🎉' : `還剩 ${p.total - p.done} 個字`;
+  document.getElementById('home-note').textContent = `已標記背起來 ${PROGRESS.memorized.length} 個字`;
+  document.getElementById('btn-start-session').textContent =
+    PROGRESS.position > 0 && PROGRESS.position < VOCAB_DATA.length - 1 ? '繼續背單字' : '開始背單字';
 }
 
-/* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽) ---------- */
-let session = { queue: [], idx: 0, flipped: false };
-
-function buildQueue() {
-  return VOCAB_DATA.filter(e => !isMemorized(e.num));
-}
+/* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽,固定順序,離開會記住位置) ---------- */
+let session = { idx: 0, flipped: false };
 
 function startSession() {
-  const q = buildQueue();
-  session = { queue: q, idx: 0, flipped: false };
-  if (q.length === 0) {
-    alert('全部背起來了！🎉');
-    return;
-  }
+  session = { idx: PROGRESS.position, flipped: false };
   showView('view-session');
   renderCard();
 }
 
-function currentEntry() { return session.queue[session.idx]; }
+function currentEntry() { return VOCAB_DATA[session.idx]; }
 
 function renderCard() {
   const e = currentEntry();
   if (!e) { finishSession(); return; }
+  PROGRESS.position = session.idx;
+  saveProgress();
+
   const card = document.getElementById('flashcard');
   session.flipped = !!PROGRESS.settings.defaultFlipped;
   card.classList.toggle('flipped', session.flipped);
@@ -124,7 +125,7 @@ function renderCard() {
 }
 
 function renderCardProgress() {
-  const p = overallProgress();
+  const p = swipeProgress();
   document.getElementById('session-progress-fill').style.width = p.pct + '%';
   document.getElementById('session-progress-count').textContent = `${p.done} / ${p.total}`;
 }
@@ -197,7 +198,7 @@ function flySwap(dir, apply) {
 }
 
 function nextCard() {
-  if (session.idx >= session.queue.length - 1) { finishSession(); return; }
+  if (session.idx >= VOCAB_DATA.length - 1) { finishSession(); return; }
   flySwap('up', () => { session.idx++; renderCard(); });
 }
 function prevCard() {
@@ -213,31 +214,18 @@ function syncActionButton() {
 }
 
 function markCurrent() {
-  if (swapping) return;
   const e = currentEntry();
   if (!e) return;
-  const next = !isMemorized(e.num);
-  setMemorized(e.num, next);
-  // 標成「背起來了」就從這輪佇列抽掉;取消標記則留著
-  if (next) {
-    session.queue.splice(session.idx, 1);
-    if (session.queue.length === 0) { finishSession(); return; }
-    if (session.idx >= session.queue.length) session.idx = session.queue.length - 1;
-    flySwap('up', () => renderCard());
-    return;
-  }
+  setMemorized(e.num, !isMemorized(e.num));
   syncActionButton();
-  renderCardProgress();
 }
 
 function finishSession() {
-  const p = overallProgress();
-  const hit = p.done >= p.total;
-  document.getElementById('done-emoji').textContent = hit ? '🎉' : '👍';
-  document.getElementById('done-title').textContent = hit ? '全部背起來了！' : '先看到這裡';
+  const p = swipeProgress();
+  document.getElementById('done-emoji').textContent = '🎉';
+  document.getElementById('done-title').textContent = '全部字都看過了！';
   document.getElementById('done-stats').innerHTML =
-    `目前進度 <b>${p.done} / ${p.total}</b> 字`;
-  document.getElementById('btn-done-next').style.display = (p.total - p.done) ? '' : 'none';
+    `已標記背起來 <b>${PROGRESS.memorized.length} / ${p.total}</b> 字`;
   showView('view-done');
 }
 
@@ -265,16 +253,14 @@ document.getElementById('btn-speak').onclick = (ev) => {
   window.speechSynthesis.speak(u);
 };
 document.getElementById('btn-done-next').onclick = () => {
-  const q = buildQueue();
-  if (q.length === 0) { showView('view-home'); renderHome(); return; }
-  session = { queue: q, idx: 0, flipped: false };
+  session = { idx: 0, flipped: false };
   showView('view-session');
   renderCard();
 };
 document.getElementById('btn-done-home').onclick = () => { showView('view-home'); renderHome(); };
 
 document.getElementById('btn-reset').onclick = () => {
-  if (confirm('確定要清空「背起來了」的紀錄,全部字重新開始嗎？')) {
+  if (confirm('確定要清空進度嗎?「背起來了」的標記跟目前滑到哪都會重設,全部字重新開始。')) {
     PROGRESS = defaultProgress();
     saveProgress();
     renderHome();
@@ -331,7 +317,7 @@ document.addEventListener('keydown', (ev) => {
     ev.preventDefault();
     let y = dy;
     if (session.idx === 0 && dy > 0) y = dy * 0.3;
-    if (session.idx >= session.queue.length - 1 && dy < 0) y = dy * 0.55;
+    if (session.idx >= VOCAB_DATA.length - 1 && dy < 0) y = dy * 0.55;
     sw.style.transform = `translateY(${y}px)`;
     sw.style.opacity = String(Math.max(0.4, 1 - Math.abs(y) / 600));
   }, { passive: false });
@@ -344,7 +330,7 @@ document.addEventListener('keydown', (ev) => {
     const dy = lastY - sy;
     const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
     if (commit && dy < 0) {
-      if (session.idx < session.queue.length - 1) { finishDrag('up', () => { session.idx++; renderCard(); }); return; }
+      if (session.idx < VOCAB_DATA.length - 1) { finishDrag('up', () => { session.idx++; renderCard(); }); return; }
       springBack(); finishSession(); return;
     }
     if (commit && dy > 0 && session.idx > 0) { finishDrag('down', () => { session.idx--; renderCard(); }); return; }
