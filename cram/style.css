@@ -277,10 +277,8 @@ html,body{
 /* 標成該分類時只留一個淡色暈染 + 描邊上色,不整顆塗死 —— 跟其他「選中」狀態
    (day-dot.current、tier-chip.active)是同一套語言,才不會突兀。
    再按一次可以退回「還沒背」。 */
-#btn-archive.on .action-circle{border-color:var(--gold);color:var(--gold);background:var(--gold-soft);}
-#btn-archive.on .action-label{color:var(--gold);}
-#btn-impress.on .action-circle{border-color:var(--sage);color:var(--sage);background:rgba(143,214,168,.13);}
-#btn-impress.on .action-label{color:var(--sage);}
+#btn-memorized.on .action-circle{border-color:var(--gold);color:var(--gold);background:var(--gold-soft);}
+#btn-memorized.on .action-label{color:var(--gold);}
 
 /* ---------- 完成 ---------- */
 .done-stage{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;gap:10px;}
