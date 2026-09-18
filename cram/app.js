@@ -118,17 +118,10 @@ function setSetting(key, val) {
 /* ---------- FLASHCARD SESSION (Reels 式上下滑瀏覽,固定順序,離開會記住位置) ---------- */
 let session = { idx: 0, flipped: false };
 
+// 一定從上次離開的那張卡接著看,不管那張現在算不算「隱藏」—— 隱藏只影響
+// 「往前滑找新字」時要不要跳過,不該讓使用者連自己剛剛看到哪都回不去。
 function startSession() {
-  let idx = PROGRESS.position;
-  if (isHidden(VOCAB_DATA[idx].num)) {
-    idx = findVisible(idx + 1, 1);
-    if (idx === -1) idx = findVisible(0, 1);
-  }
-  if (idx === -1 || idx == null) {
-    alert('全部字都已經標記「背起來了」!\n\n把上面「顯示已經會的字」的開關打開才能繼續複習。');
-    return;
-  }
-  session = { idx, flipped: false };
+  session = { idx: PROGRESS.position, flipped: false };
   showView('view-session');
   renderCard();
 }
@@ -251,16 +244,16 @@ function flySwap(dir, apply) {
   }, 800);
 }
 
-// 換卡一律跳過「顯示已經會的字」關掉時被隱藏的字
+// 往前滑找新字才跳過「顯示已經會的字」關掉時被隱藏的字;
+// 往後滑是回顧,不管隱不隱藏都直接看上一張,不然剛標記完的字馬上就滑不回去了。
 function nextCard() {
   const ni = findVisible(session.idx + 1, 1);
   if (ni === -1) { finishSession(); return; }
   flySwap('up', () => { session.idx = ni; renderCard(); });
 }
 function prevCard() {
-  const pi = findVisible(session.idx - 1, -1);
-  if (pi === -1) return;
-  flySwap('down', () => { session.idx = pi; renderCard(); });
+  if (session.idx <= 0) return;
+  flySwap('down', () => { session.idx--; renderCard(); });
 }
 
 // 唯一的分類按鈕:「背起來了」,亮起來表示這張卡已經標記過;再按一次可以取消
@@ -399,7 +392,7 @@ document.addEventListener('keydown', (ev) => {
     if (mode !== 'swipe') return;
     ev.preventDefault();
     let y = dy;
-    if (findVisible(session.idx - 1, -1) === -1 && dy > 0) y = dy * 0.3;
+    if (session.idx <= 0 && dy > 0) y = dy * 0.3;
     if (findVisible(session.idx + 1, 1) === -1 && dy < 0) y = dy * 0.55;
     sw.style.transform = `translateY(${y}px)`;
     sw.style.opacity = String(Math.max(0.4, 1 - Math.abs(y) / 600));
@@ -413,7 +406,7 @@ document.addEventListener('keydown', (ev) => {
     const dy = lastY - sy;
     const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
     if (commit && dy < 0) { finishDragTo(findVisible(session.idx + 1, 1), 'up'); return; }
-    if (commit && dy > 0) { finishDragTo(findVisible(session.idx - 1, -1), 'down'); return; }
+    if (commit && dy > 0) { finishDragTo(session.idx > 0 ? session.idx - 1 : -1, 'down'); return; }
     springBack();
   }, { passive: true });
 

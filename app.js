@@ -435,10 +435,17 @@ function buildQueue(need) {
   return unseen.concat(seen).slice(0, need);
 }
 
+// 這一份已經看過的字(依 dailySeen 的順序)要接到佇列最前面,不然離開回首頁
+// 再回來,buildQueue() 只會給「還沒算過」的新字,上滑找不到剛剛看過的那些卡了。
+function seenThisRoundEntries() {
+  return (PROGRESS.dailySeen || []).map(n => byNum[n]).filter(Boolean);
+}
+
 function startSession() {
   syncToggleUI();
-  const q = buildQueue();
-  session = { queue: q, idx: 0, flipped: false };
+  const seenEntries = seenThisRoundEntries();
+  const q = seenEntries.concat(buildQueue());
+  session = { queue: q, idx: Math.max(0, seenEntries.length - 1), flipped: false };
   if (q.length === 0) {
     const r = roundStats();
     if (r.quota === 0) {
@@ -638,19 +645,20 @@ function setSetting(key, val) {
   if (document.getElementById('view-stats').classList.contains('active')) renderStats();
 }
 
-// toggle 分類後,把這回合的佇列整個重排 = 目前所有「有開的分類 + 今天還沒算過」的字,
-// 沒看過的排前面、看過的(含有印象)排後面。這裡不套每日配額 —— 使用者主動開了某類,
-// 就是要看到那類的全部;要停隨時退出。眼前這張即使剛被藏起來也先留著,滑走才消失。
+// toggle 分類後,把這回合的佇列整個重排 = 這回合已經看過的字(順序不變,保留上滑
+// 回顧的能力)+ 目前所有「有開的分類 + 今天還沒算過」的字。沒看過的排前面、看過
+// 的(含有印象)排後面。這裡不套每日配額 —— 使用者主動開了某類,就是要看到那類
+// 的全部;要停隨時退出。
 function refreshSessionQueue() {
   if (!session.queue.length) return;
   const curNum = currentEntry() ? currentEntry().num : null;
+  const seenEntries = seenThisRoundEntries();
   const doneToday = new Set(PROGRESS.dailySeen || []);
-  const pool = VOCAB_DATA.filter(e =>
-    (isVisible(e.num) && !doneToday.has(e.num)) || e.num === curNum);
+  const pool = VOCAB_DATA.filter(e => isVisible(e.num) && !doneToday.has(e.num));
   let unseen = pool.filter(e => !isSeen(e.num));
   let seen = pool.filter(e => isSeen(e.num));
   if (PROGRESS.settings.shuffleOrder) { unseen = shuffle(unseen); seen = shuffle(seen); }
-  const q = unseen.concat(seen);
+  const q = seenEntries.concat(unseen, seen);
   if (q.length === 0) { finishSession(); return; }
   session.queue = q;
   const i = q.findIndex(e => e.num === curNum);
