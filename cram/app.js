@@ -59,10 +59,16 @@ function findVisible(fromIdx, dir) {
   return -1;
 }
 
-// 進度 = 目前滑到第幾張(position),不是標記了幾個 —— 單純瀏覽也會往前走
+// 進度 = 目前滑到第幾張(position),不是標記了幾個 —— 單純瀏覽也會往前走。
+// 分母只算「顯示已經會的字」開關有開時看得到的字 —— 關掉開關,已標記的字
+// 就整個從分子分母移除,進度即時重算,跟切 toggle 當下同步變化。
 function swipeProgress() {
-  const total = VOCAB_DATA.length;
-  const done = Math.min(total, PROGRESS.position + 1);
+  let total = 0, done = 0;
+  for (let i = 0; i < VOCAB_DATA.length; i++) {
+    if (isHidden(VOCAB_DATA[i].num)) continue;
+    total++;
+    if (i <= PROGRESS.position) done++;
+  }
   return { done, total, pct: total ? Math.round(done / total * 100) : 0 };
 }
 
@@ -98,10 +104,14 @@ function setSetting(key, val) {
   saveProgress();
   syncToggleUI();
   const inSession = document.getElementById('view-session').classList.contains('active');
-  if (inSession && key === 'showKnown') {
-    // 剛關掉開關,眼前這張如果變成該隱藏的字,直接跳到下一張看得到的
+  if (inSession) {
+    // 剛關掉開關,眼前這張如果變成該隱藏的字,直接跳到下一張看得到的;
+    // 不然分母/分子還是要照切換後的可見範圍重算一次,進度條才會馬上動
     const e = currentEntry();
     if (e && isHidden(e.num)) nextCard();
+    else renderCardProgress();
+  } else {
+    renderHome();
   }
 }
 
