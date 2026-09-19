@@ -120,8 +120,16 @@ let session = { idx: 0, flipped: false };
 
 // 一定從上次離開的那張卡接著看,不管那張現在算不算「隱藏」—— 隱藏只影響
 // 「往前滑找新字」時要不要跳過,不該讓使用者連自己剛剛看到哪都回不去。
+// 例外:上次已經刷到底了(往前已經找不到下一張看得到的卡,不管是真的刷完
+// 整副牌、還是後面剩下的全部都被隱藏了),再點「開始背單字」是要重新來
+// 一輪,不是卡在最後一張動不了 —— 從頭開始找第一張看得到的卡。
 function startSession() {
-  session = { idx: PROGRESS.position, flipped: false };
+  let idx = PROGRESS.position;
+  if (findVisible(idx + 1, 1) === -1) {
+    const first = findVisible(0, 1);
+    idx = first === -1 ? 0 : first;
+  }
+  session = { idx, flipped: false };
   showView('view-session');
   renderCard();
 }
