@@ -252,16 +252,17 @@ function flySwap(dir, apply) {
   }, 800);
 }
 
-// 往前滑找新字才跳過「顯示已經會的字」關掉時被隱藏的字;
-// 往後滑是回顧,不管隱不隱藏都直接看上一張,不然剛標記完的字馬上就滑不回去了。
+// 不管往前找新字還是往後回顧,都跳過「顯示已經會的字」關掉時被隱藏的字 ——
+// 開關要在兩個方向都生效,不然關掉開關卻還看得到已經背起來的字就沒意義了。
 function nextCard() {
   const ni = findVisible(session.idx + 1, 1);
   if (ni === -1) { finishSession(); return; }
   flySwap('up', () => { session.idx = ni; renderCard(); });
 }
 function prevCard() {
-  if (session.idx <= 0) return;
-  flySwap('down', () => { session.idx--; renderCard(); });
+  const pi = findVisible(session.idx - 1, -1);
+  if (pi === -1) return;
+  flySwap('down', () => { session.idx = pi; renderCard(); });
 }
 
 // 唯一的分類按鈕:「背起來了」,亮起來表示這張卡已經標記過;再按一次可以取消
@@ -400,7 +401,7 @@ document.addEventListener('keydown', (ev) => {
     if (mode !== 'swipe') return;
     ev.preventDefault();
     let y = dy;
-    if (session.idx <= 0 && dy > 0) y = dy * 0.3;
+    if (findVisible(session.idx - 1, -1) === -1 && dy > 0) y = dy * 0.3;
     if (findVisible(session.idx + 1, 1) === -1 && dy < 0) y = dy * 0.55;
     sw.style.transform = `translateY(${y}px)`;
     sw.style.opacity = String(Math.max(0.4, 1 - Math.abs(y) / 600));
@@ -414,7 +415,7 @@ document.addEventListener('keydown', (ev) => {
     const dy = lastY - sy;
     const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
     if (commit && dy < 0) { finishDragTo(findVisible(session.idx + 1, 1), 'up'); return; }
-    if (commit && dy > 0) { finishDragTo(session.idx > 0 ? session.idx - 1 : -1, 'down'); return; }
+    if (commit && dy > 0) { finishDragTo(findVisible(session.idx - 1, -1), 'down'); return; }
     springBack();
   }, { passive: true });
 
