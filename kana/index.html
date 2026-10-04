@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0f1115">
+<title>ひらがな 五十音</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ひらがな">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+
+  <!-- HOME -->
+  <section id="view-home" class="view active">
+    <header class="topbar">
+      <div class="brand">ひらがな 五十音</div>
+      <div style="width:32px"></div>
+    </header>
+
+    <div class="home-hero">
+      <div class="hero-label">記得進度</div>
+      <div class="progress-ring-wrap">
+        <svg viewBox="0 0 120 120" class="progress-ring">
+          <circle cx="60" cy="60" r="52" class="ring-bg"/>
+          <circle cx="60" cy="60" r="52" class="ring-fg" id="ring-fg"/>
+        </svg>
+        <div class="ring-label">
+          <div id="ring-pct">0%</div>
+          <div class="ring-small" id="ring-count">0 / 0</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row-section">
+      <div class="row-title">背到哪一行?<span>點那一行,前面的會一起打開</span></div>
+      <div class="row-chips" id="row-chips"></div>
+    </div>
+
+    <div class="setting-block">
+      <div class="setting-row">
+        <div class="setting-text"><div class="setting-title">翻面自動發音</div></div>
+        <button id="toggle-speak" class="switch" role="switch" aria-checked="true"><span class="switch-knob"></span></button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text"><div class="setting-title">隨機順序</div></div>
+        <button id="toggle-shuffle" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+      </div>
+      <div class="setting-row">
+        <div class="setting-text"><div class="setting-title">也複習已經記得的</div></div>
+        <button id="toggle-review" class="switch" role="switch" aria-checked="false"><span class="switch-knob"></span></button>
+      </div>
+    </div>
+
+    <button id="btn-start-session" class="cta-btn">開始背</button>
+
+    <div class="home-foot">
+      <button id="btn-reset" class="danger-btn">重置「記得了」的紀錄</button>
+    </div>
+  </section>
+
+  <!-- FLASHCARD SESSION -->
+  <section id="view-session" class="view">
+    <header class="topbar">
+      <button id="btn-exit-session" class="icon-btn">✕</button>
+      <div class="session-progress-mid">
+        <div class="session-progress-bar"><div id="session-progress-fill"></div></div>
+        <div class="session-progress-label">
+          <span id="session-progress-count">0 / 0</span>
+        </div>
+      </div>
+      <div style="width:32px"></div>
+    </header>
+
+    <div class="card-stage">
+      <div id="card-swiper">
+      <div id="flashcard" class="flashcard">
+        <div class="card-face card-front">
+          <div class="card-word kana" id="card-word"></div>
+          <div class="card-hint">點卡片看答案 · 上滑下一個</div>
+        </div>
+        <div class="card-face card-back">
+          <div class="card-back-inner">
+            <div class="card-word-row">
+              <span class="card-word-small kana" id="card-word-back"></span>
+              <button id="btn-speak" class="speak-mini" title="發音" aria-label="發音">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.2v13.6L7.2 14.5H4z"/><path d="M15.6 8.8a4.4 4.4 0 0 1 0 6.4M18.2 6.2a8 8 0 0 1 0 11.6"/></svg>
+              </button>
+            </div>
+            <div class="romaji" id="card-romaji"></div>
+            <div class="card-hook" id="card-mnemonic"></div>
+            <div class="card-section" id="card-example-wrap">
+              <div class="card-label">例字</div>
+              <div class="ex-word kana" id="card-ex-word"></div>
+              <div class="ex-sub" id="card-ex-sub"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
+      <div class="action-stack">
+        <button id="btn-memorized" class="action-btn" title="記得了">
+          <span class="action-circle">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>
+          </span>
+          <span class="action-label">記得了</span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- DONE -->
+  <section id="view-done" class="view">
+    <div class="done-stage">
+      <div class="done-emoji">🎉</div>
+      <div class="done-title">這個範圍全部記得了！</div>
+      <div class="done-stats" id="done-stats"></div>
+      <button id="btn-done-home" class="cta-btn">回首頁</button>
+    </div>
+  </section>
+
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      reg.update();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') reg.update();
+      });
+    });
+  });
+  let refreshedForNewSW = false;
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    if (refreshedForNewSW) return;
+    refreshedForNewSW = true;
+    window.location.reload();
+  });
+}
+</script>
+</body>
+</html>
