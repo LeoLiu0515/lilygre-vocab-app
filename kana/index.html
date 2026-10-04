@@ -80,27 +80,17 @@
 
     <div class="card-stage">
       <div id="card-swiper">
-      <div id="flashcard" class="flashcard">
-        <div class="card-face card-front">
-          <div class="card-word kana" id="card-word"></div>
-          <div class="card-hint">點卡片看答案 · 上滑下一個</div>
-        </div>
-        <div class="card-face card-back">
-          <div class="card-back-inner">
-            <div class="card-word-row">
-              <span class="card-word-small kana" id="card-word-back"></span>
-              <button id="btn-speak" class="speak-mini" title="發音" aria-label="發音">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.2v13.6L7.2 14.5H4z"/><path d="M15.6 8.8a4.4 4.4 0 0 1 0 6.4M18.2 6.2a8 8 0 0 1 0 11.6"/></svg>
-              </button>
-            </div>
-            <div class="romaji" id="card-romaji"></div>
-            <div class="card-hook" id="card-mnemonic"></div>
-            <div class="card-section" id="card-example-wrap">
-              <div class="card-label">例字</div>
-              <div class="ex-word kana" id="card-ex-word"></div>
-              <div class="ex-sub" id="card-ex-sub"></div>
-            </div>
+      <div id="flashcard" class="flashcard kcard">
+        <div class="kface">
+          <div class="k-kana kana" id="card-word"></div>
+          <div class="k-answer" id="card-answer">
+            <div class="k-romaji" id="card-romaji"></div>
+            <button id="btn-speak" class="k-speak" title="發音" aria-label="發音">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.2L12 5.2v13.6L7.2 14.5H4z"/><path d="M15.6 8.8a4.4 4.4 0 0 1 0 6.4M18.2 6.2a8 8 0 0 1 0 11.6"/></svg>
+            </button>
+            <div class="k-ex" id="card-example-wrap"><span class="kana" id="card-ex-word"></span><span id="card-ex-sub"></span></div>
           </div>
+          <div class="k-hint" id="card-hint">點一下看答案</div>
         </div>
       </div>
       </div>

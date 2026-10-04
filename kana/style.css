@@ -366,11 +366,6 @@ a{color:var(--gold);}
 
 /* ---- ひらがな ---- */
 .kana{font-family:"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic","Meiryo",var(--sans);font-weight:500;}
-.card-word.kana{font-size:132px;line-height:1;letter-spacing:0;font-weight:400;}
-.card-word-small.kana{font-size:34px;font-weight:500;}
-.romaji{font-family:var(--serif);font-size:56px;font-weight:700;line-height:1.1;margin:4px 0 18px;letter-spacing:-.01em;}
-.ex-word{font-size:26px;line-height:1.4;}
-.ex-sub{font-size:13.5px;color:var(--ink-dim);margin-top:4px;}
 
 .row-section{padding:22px 20px 0;}
 .row-title{font-size:13px;font-weight:700;margin-bottom:12px;}
@@ -386,4 +381,28 @@ a{color:var(--gold);}
 .setting-block{padding:10px 20px 0;}
 .setting-block .setting-row{padding:12px 2px;margin-bottom:0;}
 .home-foot{padding-top:14px;}
-@media (max-width:360px){.card-word.kana{font-size:110px;}}
+@media (max-width:360px){.k-kana{font-size:116px;}}
+
+/* 單面卡:假名固定不動,點一下才浮出答案(不翻面) */
+.kcard{transform:none !important;transition:none;}
+.kface{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  padding:0 24px 120px;justify-content:center;text-align:center;
+}
+.k-kana{font-size:150px;line-height:1;font-weight:300;letter-spacing:0;color:var(--ink);}
+.k-answer{
+  display:flex;flex-direction:column;align-items:center;margin-top:34px;
+  opacity:0;transform:translateY(8px);transition:opacity .22s ease,transform .22s ease;pointer-events:none;
+}
+.kcard.revealed .k-answer{opacity:1;transform:none;pointer-events:auto;}
+.k-romaji{font-family:var(--sans);font-size:46px;font-weight:600;letter-spacing:.04em;line-height:1;color:var(--gold);}
+.k-speak{
+  margin-top:20px;width:42px;height:42px;border-radius:50%;border:1px solid var(--hairline);
+  background:rgba(255,255,255,.04);color:var(--ink-dim);display:flex;align-items:center;justify-content:center;cursor:pointer;
+}
+.k-speak svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;}
+.k-speak:active{color:var(--gold);transform:scale(.9);}
+.k-ex{margin-top:22px;font-size:13.5px;color:var(--ink-dim);display:flex;gap:10px;align-items:baseline;}
+.k-ex .kana{font-size:18px;color:#c9c5bc;}
+.k-hint{position:absolute;left:0;right:0;bottom:130px;font-size:11px;letter-spacing:.08em;color:var(--ink-dim);opacity:.6;transition:opacity .2s;}
+.kcard.revealed .k-hint{opacity:0;}

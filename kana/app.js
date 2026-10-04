@@ -121,20 +121,15 @@ function renderCard() {
   const e = currentEntry();
   if (!e) { finishSession(); return; }
   session.flipped = false;
-  document.getElementById('flashcard').classList.remove('flipped');
+  document.getElementById('flashcard').classList.remove('revealed');
   document.getElementById('card-word').textContent = e.kana;
-  document.getElementById('card-word-back').textContent = e.kana;
   document.getElementById('card-romaji').textContent = e.romaji;
-  document.getElementById('card-mnemonic').textContent = e.mnemonic;
 
   const hasEx = !!e.word;
-  document.getElementById('card-example-wrap').style.display = hasEx ? '' : 'none';
+  document.getElementById('card-example-wrap').style.visibility = hasEx ? '' : 'hidden';
   if (hasEx) {
     // 例字裡把這個假名畫底線
-    const i = e.word.indexOf(e.kana);
-    document.getElementById('card-ex-word').innerHTML = i === -1 ? escapeHtml(e.word) :
-      escapeHtml(e.word.slice(0, i)) + '<u class="ex-target">' + escapeHtml(e.kana) + '</u>' +
-      escapeHtml(e.word.slice(i + e.kana.length));
+    document.getElementById('card-ex-word').textContent = e.word;
     document.getElementById('card-ex-sub').textContent = `${e.wr} · ${e.zh}`;
   }
   document.getElementById('btn-memorized').classList.toggle('on', isKnown(e.kana));
@@ -158,7 +153,7 @@ function speak() {
 
 function flipCard() {
   session.flipped = !session.flipped;
-  document.getElementById('flashcard').classList.toggle('flipped', session.flipped);
+  document.getElementById('flashcard').classList.toggle('revealed', session.flipped);
   if (session.flipped && PROGRESS.settings.autoSpeak) speak();
 }
 
@@ -250,13 +245,7 @@ document.addEventListener('keydown', (ev) => {
   const sw = document.getElementById('card-swiper');
   let sx = 0, sy = 0, lastY = 0, lastT = 0, vel = 0, mode = null, dragging = false;
 
-  function backCanScroll(dirUp) {
-    if (!session.flipped) return false;
-    const el = document.querySelector('.card-back');
-    if (el.scrollHeight - el.clientHeight < 5) return false;
-    if (dirUp) return (el.scrollHeight - el.scrollTop - el.clientHeight) > 5;
-    return el.scrollTop > 5;
-  }
+  function backCanScroll() { return false; }
 
   stage.addEventListener('touchstart', (ev) => {
     if (swapping) return;
