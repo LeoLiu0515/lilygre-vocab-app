@@ -8,7 +8,7 @@ function defaultProgress() {
   return {
     known: [],          // 已經按過「記得了」的假名
     upto: 4,            // 背到第幾行(ROWS 的索引),0..upto 都打開
-    settings: { shuffle: false, autoSpeak: true, review: false },
+    settings: { ordered: false, autoSpeak: true, review: false },
   };
 }
 
@@ -57,7 +57,7 @@ function shuffle(arr) {
 }
 function buildQueue() {
   let q = inRange().filter(e => PROGRESS.settings.review || !isKnown(e.kana));
-  if (PROGRESS.settings.shuffle) q = shuffle(q);
+  if (!PROGRESS.settings.ordered) q = shuffle(q);
   return q;
 }
 
@@ -70,7 +70,7 @@ function escapeHtml(s) {
 }
 
 /* ---------- HOME ---------- */
-const SWITCHES = [['toggle-speak', 'autoSpeak'], ['toggle-shuffle', 'shuffle'], ['toggle-review', 'review']];
+const SWITCHES = [['toggle-speak', 'autoSpeak'], ['toggle-ordered', 'ordered'], ['toggle-review', 'review']];
 
 function renderHome() {
   const p = progress();
@@ -184,13 +184,26 @@ function flySwap(dir, apply) {
 }
 
 // 佇列是循環的:滑到最後一張再往下就繞回第一張,沒記得的字會一直輪回來
+// 預設是隨機順序;繞完一圈回到開頭時重新洗牌,才不會第二圈又變成固定順序
+function step(dir) {
+  const q = session.queue, n = q.length;
+  if (dir > 0 && session.idx === n - 1 && !PROGRESS.settings.ordered) {
+    const cur = q[session.idx];
+    let s = shuffle(q);
+    if (s[0] === cur && n > 1) [s[0], s[1]] = [s[1], s[0]];
+    session.queue = s;
+    session.idx = 0;
+  } else {
+    session.idx = (session.idx + dir + n) % n;
+  }
+}
 function nextCard() {
   if (session.queue.length < 2) return;
-  flySwap('up', () => { session.idx = (session.idx + 1) % session.queue.length; renderCard(); });
+  flySwap('up', () => { step(1); renderCard(); });
 }
 function prevCard() {
   if (session.queue.length < 2) return;
-  flySwap('down', () => { session.idx = (session.idx - 1 + session.queue.length) % session.queue.length; renderCard(); });
+  flySwap('down', () => { step(-1); renderCard(); });
 }
 
 function markCurrent() {
@@ -283,8 +296,7 @@ document.addEventListener('keydown', (ev) => {
     if (!commit) { springBack(); return; }
     const up = dy < 0;
     finishDrag(up ? 'up' : 'down', () => {
-      const n = session.queue.length;
-      session.idx = (session.idx + (up ? 1 : n - 1)) % n;
+      step(up ? 1 : -1);
       renderCard();
     });
   }, { passive: true });

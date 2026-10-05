@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kana-cache-v3';
+const CACHE_NAME = 'kana-cache-v4';
 const ASSETS = [
   './',
   './index.html',
