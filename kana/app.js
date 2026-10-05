@@ -137,9 +137,9 @@ function renderCard() {
 }
 
 function renderCardProgress() {
-  const p = progress();
-  document.getElementById('session-progress-fill').style.width = p.pct + '%';
-  document.getElementById('session-progress-count').textContent = `${p.done} / ${p.total}`;
+  const n = session.queue.length, cur = session.idx + 1;
+  document.getElementById('session-progress-fill').style.width = (n ? cur / n * 100 : 0) + '%';
+  document.getElementById('session-progress-count').textContent = `${cur} / ${n}`;
 }
 
 function speak() {
@@ -184,26 +184,15 @@ function flySwap(dir, apply) {
 }
 
 // 佇列是循環的:滑到最後一張再往下就繞回第一張,沒記得的字會一直輪回來
-// 預設是隨機順序;繞完一圈回到開頭時重新洗牌,才不會第二圈又變成固定順序
-function step(dir) {
-  const q = session.queue, n = q.length;
-  if (dir > 0 && session.idx === n - 1 && !PROGRESS.settings.ordered) {
-    const cur = q[session.idx];
-    let s = shuffle(q);
-    if (s[0] === cur && n > 1) [s[0], s[1]] = [s[1], s[0]];
-    session.queue = s;
-    session.idx = 0;
-  } else {
-    session.idx = (session.idx + dir + n) % n;
-  }
-}
+// 一輪 = 範圍內還沒記得的字各出現一次(預設隨機),滑到底就結束,不會自己繞回來重複。
+// 進度條 = 這一輪看到第幾張;標記「記得了」不會把卡抽掉,只是記下來並直接滑下一張。
 function nextCard() {
-  if (session.queue.length < 2) return;
-  flySwap('up', () => { step(1); renderCard(); });
+  if (session.idx >= session.queue.length - 1) { finishSession(); return; }
+  flySwap('up', () => { session.idx++; renderCard(); });
 }
 function prevCard() {
-  if (session.queue.length < 2) return;
-  flySwap('down', () => { step(-1); renderCard(); });
+  if (session.idx <= 0) return;
+  flySwap('down', () => { session.idx--; renderCard(); });
 }
 
 function markCurrent() {
@@ -212,18 +201,18 @@ function markCurrent() {
   if (!e) return;
   const next = !isKnown(e.kana);
   setKnown(e.kana, next);
-  if (!next) { document.getElementById('btn-memorized').classList.remove('on'); renderCardProgress(); return; }
-  if (PROGRESS.settings.review) { renderCardProgress(); nextCard(); return; }
-  // 記得了 → 從佇列抽掉,idx 不動就剛好是下一張(到底就繞回第一張)
-  session.queue.splice(session.idx, 1);
-  if (session.queue.length === 0) { finishSession(); return; }
-  if (session.idx >= session.queue.length) session.idx = 0;
-  flySwap('up', () => renderCard());
+  document.getElementById('btn-memorized').classList.toggle('on', next);
+  if (next) nextCard();   // 標記完直接滑到下一張;取消標記則留在原地
 }
 
 function finishSession() {
   const p = progress();
-  document.getElementById('done-stats').innerHTML = `記得了 <b>${p.done} / ${p.total}</b> 個`;
+  const left = p.total - p.done;
+  document.getElementById('done-emoji').textContent = left ? '👍' : '🎉';
+  document.getElementById('done-title').textContent = left ? '這一輪看完了' : '這個範圍全部記得了！';
+  document.getElementById('done-stats').innerHTML =
+    `記得了 <b>${p.done} / ${p.total}</b> 個` + (left ? `<br>還有 <b>${left}</b> 個沒記得` : '');
+  document.getElementById('btn-done-next').style.display = left || PROGRESS.settings.review ? '' : 'none';
   showView('view-done');
 }
 
@@ -233,6 +222,7 @@ document.getElementById('btn-exit-session').onclick = () => {
   window.speechSynthesis && window.speechSynthesis.cancel();
   showView('view-home'); renderHome();
 };
+document.getElementById('btn-done-next').onclick = startSession;
 document.getElementById('btn-done-home').onclick = () => { showView('view-home'); renderHome(); };
 document.getElementById('flashcard').onclick = flipCard;
 document.getElementById('btn-memorized').onclick = (ev) => { ev.stopPropagation(); markCurrent(); };
@@ -292,11 +282,13 @@ document.addEventListener('keydown', (ev) => {
     if (mode !== 'swipe') { mode = null; sw.style.transition = ''; return; }
     mode = null;
     const dy = lastY - sy;
-    const commit = (Math.abs(dy) > 90 || Math.abs(vel) > 0.55) && session.queue.length > 1;
+    const commit = Math.abs(dy) > 90 || Math.abs(vel) > 0.55;
     if (!commit) { springBack(); return; }
     const up = dy < 0;
+    if (up && session.idx >= session.queue.length - 1) { springBack(); finishSession(); return; }
+    if (!up && session.idx <= 0) { springBack(); return; }
     finishDrag(up ? 'up' : 'down', () => {
-      step(up ? 1 : -1);
+      session.idx += up ? 1 : -1;
       renderCard();
     });
   }, { passive: true });
